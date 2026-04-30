@@ -231,3 +231,13 @@ class RunDetail(RunRead):
     agent_name: str
     case_results: list[CaseResultRead]
     stats: RunStats | None
+
+
+class RunCompare(BaseModel):
+    run_a: RunDetail
+    run_b: RunDetail
+    pass_rate_delta: float
+    cases_improved: list[UUID]
+    cases_regressed: list[UUID]
+    cases_unchanged: list[UUID]
+    cases_errored: list[UUID]

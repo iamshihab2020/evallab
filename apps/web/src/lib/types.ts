@@ -169,3 +169,13 @@ export type RunStartInput = {
   agent_id: string;
   judge_model?: string;
 };
+
+export type RunCompare = {
+  run_a: RunDetail;
+  run_b: RunDetail;
+  pass_rate_delta: number;
+  cases_improved: string[];
+  cases_regressed: string[];
+  cases_unchanged: string[];
+  cases_errored: string[];
+};

@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -14,11 +14,13 @@ from src.deps import verify_api_key
 from src.models import Agent, CaseResult, Run, TestSet
 from src.schemas import (
     CaseResultRead,
+    RunCompare,
     RunDetail,
     RunListItem,
     RunRead,
     RunStart,
 )
+from src.services.exporter import export_run_md
 from src.services.runner import execute_run
 from src.services.stats import compute_stats
 
@@ -115,8 +117,7 @@ async def list_runs(
     ]
 
 
-@router.get("/{run_id}", response_model=RunDetail)
-async def get_run(run_id: UUID, db: AsyncSession = Depends(get_db)) -> RunDetail:
+async def _build_run_detail(run_id: UUID, db: AsyncSession) -> RunDetail:
     run = await db.get(Run, run_id)
     if run is None:
         raise HTTPException(404, "Run not found")
@@ -130,7 +131,6 @@ async def get_run(run_id: UUID, db: AsyncSession = Depends(get_db)) -> RunDetail
         .order_by(CaseResult.created_at.asc())
     )
     case_results = (await db.execute(cr_stmt)).scalars().all()
-
     stats = compute_stats(case_results) if run.status == "completed" else None
 
     return RunDetail(
@@ -149,6 +149,87 @@ async def get_run(run_id: UUID, db: AsyncSession = Depends(get_db)) -> RunDetail
         agent_name=agent.name if agent else "",
         case_results=[CaseResultRead.model_validate(cr) for cr in case_results],
         stats=stats,
+    )
+
+
+@router.get("/compare", response_model=RunCompare)
+async def compare_runs(
+    a: UUID = Query(...),
+    b: UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+) -> RunCompare:
+    run_a = await _build_run_detail(a, db)
+    run_b = await _build_run_detail(b, db)
+
+    if run_a.test_set_id != run_b.test_set_id:
+        raise HTTPException(
+            400,
+            f"Cannot compare runs from different test sets. "
+            f"Run A used test set {run_a.test_set_name}; "
+            f"Run B used test set {run_b.test_set_name}.",
+        )
+    if run_a.status != "completed" or run_b.status != "completed":
+        raise HTTPException(409, "Both runs must be completed before comparison.")
+
+    a_by_case = {cr.test_case_id: cr for cr in run_a.case_results}
+    b_by_case = {cr.test_case_id: cr for cr in run_b.case_results}
+    shared_case_ids = set(a_by_case) & set(b_by_case)
+
+    improved: list[UUID] = []
+    regressed: list[UUID] = []
+    unchanged: list[UUID] = []
+    errored: list[UUID] = []
+
+    for cid in shared_case_ids:
+        ca, cb = a_by_case[cid], b_by_case[cid]
+        if ca.error or cb.error or ca.judge_score is None or cb.judge_score is None:
+            errored.append(cid)
+            continue
+        delta = cb.judge_score - ca.judge_score
+        if delta > 0:
+            improved.append(cid)
+        elif delta < 0:
+            regressed.append(cid)
+        else:
+            unchanged.append(cid)
+
+    pa = run_a.stats.pass_rate if run_a.stats else 0.0
+    pb = run_b.stats.pass_rate if run_b.stats else 0.0
+
+    return RunCompare(
+        run_a=run_a,
+        run_b=run_b,
+        pass_rate_delta=pb - pa,
+        cases_improved=improved,
+        cases_regressed=regressed,
+        cases_unchanged=unchanged,
+        cases_errored=errored,
+    )
+
+
+@router.get("/{run_id}", response_model=RunDetail)
+async def get_run(run_id: UUID, db: AsyncSession = Depends(get_db)) -> RunDetail:
+    return await _build_run_detail(run_id, db)
+
+
+@router.get("/{run_id}/export")
+async def export_run(
+    run_id: UUID,
+    format: str = Query("md"),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    if format != "md":
+        raise HTTPException(400, "Only format=md is supported.")
+    run = await _build_run_detail(run_id, db)
+    if run.status != "completed":
+        raise HTTPException(409, "Run is not completed yet.")
+    md = export_run_md(run)
+    return Response(
+        content=md,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="evallab-run-{run_id}.md"',
+        },
     )
 
 

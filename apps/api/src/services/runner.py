@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import selectinload
 
@@ -97,11 +97,15 @@ async def execute_run(run_id: UUID, db_factory: async_sessionmaker) -> None:  # 
 
                 async with db_factory() as db:
                     db.add(CaseResult(**result_kwargs))
-                    run = await db.get(Run, run_id)
-                    if run is not None:
-                        run.completed_cases += 1
-                        if errored:
-                            run.errored_cases += 1
+                    stmt = (
+                        update(Run)
+                        .where(Run.id == run_id)
+                        .values(
+                            completed_cases=Run.completed_cases + 1,
+                            errored_cases=Run.errored_cases + (1 if errored else 0),
+                        )
+                    )
+                    await db.execute(stmt)
                     await db.commit()
 
         await asyncio.gather(

@@ -29,8 +29,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
+import { downloadFile } from "@/lib/download";
 import { formatDateTime } from "@/lib/format";
 import type { CaseResult, RunDetail } from "@/lib/types";
+
+import { toast } from "sonner";
 
 const detailKey = (id: string) => ["runs", id];
 
@@ -95,7 +98,20 @@ export default function RunDetailPage() {
           {data.completed_at && <div>Completed: {formatDateTime(data.completed_at)}</div>}
         </div>
         <div className="mt-3">
-          <Button variant="outline" disabled title="Markdown export ships in Phase 5">
+          <Button
+            variant="outline"
+            disabled={data.status !== "completed"}
+            onClick={async () => {
+              try {
+                await downloadFile(
+                  `/api/v1/runs/${data.id}/export?format=md`,
+                  `evallab-run-${data.id}.md`,
+                );
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Download failed");
+              }
+            }}
+          >
             Download Markdown Report
           </Button>
         </div>
