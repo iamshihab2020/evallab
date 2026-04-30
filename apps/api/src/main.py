@@ -1,0 +1,17 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from src.config import settings
+from src.routes import health
+
+app = FastAPI(title="EvalLab API", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_list(),
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(health.router, prefix="/api/v1")

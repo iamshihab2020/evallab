@@ -60,12 +60,13 @@ No user accounts. If the env var `EVALLAB_API_KEY` is set on the backend, every 
 ## Local run commands (once code lands)
 
 ```bash
-# Database
-docker compose up -d
+# Database: dev uses a Neon dev branch (no docker-compose). Visit the Neon
+# dashboard once to wake the branch, then paste its connection string into
+# apps/api/.env (rewrite the scheme to postgresql+asyncpg://).
 
 # Backend (from apps/api)
 uv sync
-cp .env.example .env  # fill GROQ_API_KEY
+cp .env.example .env  # fill DATABASE_URL (Neon dev branch) and GROQ_API_KEY
 alembic upgrade head
 python -m src.seeds.sms_support_v1   # optional seed
 uv run uvicorn src.main:app --reload

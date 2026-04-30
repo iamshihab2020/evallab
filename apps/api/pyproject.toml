@@ -1,0 +1,33 @@
+[project]
+name = "evallab-api"
+version = "0.1.0"
+description = "EvalLab backend — LLM evaluation pipeline"
+readme = "../../README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "pydantic-settings>=2.6",
+    "openai>=1.55",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13",
+    "ruff>=0.8",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "W"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = ["pydantic.mypy"]
