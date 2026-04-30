@@ -60,6 +60,7 @@ async def execute_run(run_id: UUID, db_factory: async_sessionmaker) -> None:  # 
             agent_model = version.model
             agent_temp = version.temperature
             agent_max_tokens = version.max_tokens
+            domain_context = test_set.domain_context
             case_payloads = [
                 (c.id, c.input, c.expected_behavior) for c in cases
             ]
@@ -87,6 +88,7 @@ async def execute_run(run_id: UUID, db_factory: async_sessionmaker) -> None:  # 
                         input=case_input,
                         agent_output=agent_output,
                         expected_behavior=expected,
+                        domain_context=domain_context,
                     )
                     result_kwargs.update(
                         agent_prompt_sent=agent_full_prompt,

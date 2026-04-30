@@ -31,6 +31,7 @@ export default function NewAgentPage() {
   return (
     <div>
       <PageHeader
+        back={{ href: "/agents", label: "Agents" }}
         eyebrow={
           <>
             <Link href="/agents" className="hover:text-foreground transition-colors">

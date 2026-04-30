@@ -80,6 +80,7 @@ export default function CalibratePage() {
   return (
     <div className="space-y-8">
       <PageHeader
+        back={{ href: `/runs/${id}`, label: `Run ${id.slice(0, 8)}` }}
         eyebrow={
           <>
             <Link href={`/runs/${id}`} className="hover:text-foreground transition-colors">

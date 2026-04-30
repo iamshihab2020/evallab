@@ -73,6 +73,7 @@ export default function RunDetailPage() {
   return (
     <div>
       <PageHeader
+        back={{ href: "/runs", label: "Runs" }}
         eyebrow={
           <>
             <Link href="/runs" className="hover:text-foreground transition-colors">
@@ -140,6 +141,15 @@ export default function RunDetailPage() {
         <MetaItem label="Judge" value={<span className="font-mono">{data.judge_model}</span>} />
         <MetaItem label="Started" value={<span className="font-mono">{formatDateTime(data.started_at)}</span>} />
       </div>
+
+      {data.test_set_domain_context && (
+        <div className="rounded-lg border border-border bg-card px-4 py-3 fade-up">
+          <p className="eyebrow">Domain</p>
+          <p className="mt-1 text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+            {data.test_set_domain_context}
+          </p>
+        </div>
+      )}
 
       {data.error && (
         <Card className="border-destructive">
@@ -509,17 +519,145 @@ function CompletedView({ data }: { data: RunDetail }) {
       {data.errored_cases > 0 && (
         <section className="space-y-3">
           <p className="eyebrow text-destructive">Errors ({data.errored_cases})</p>
-          <ul className="rounded-lg border border-destructive/30 bg-destructive/[0.04] divide-y divide-destructive/20 overflow-hidden">
-            {data.case_results
-              .filter((c) => c.error)
-              .map((c) => (
-                <li key={c.id} className="px-4 py-3 text-sm">
-                  <p className="font-mono text-xs text-destructive">{c.error}</p>
-                </li>
-              ))}
-          </ul>
+          <ErrorGroups caseResults={data.case_results} />
         </section>
       )}
+    </div>
+  );
+}
+
+type ErrorSummary = { kind: string; headline: string; hint?: string };
+
+function summarizeError(err: string): ErrorSummary {
+  if (/tokens per day \(TPD\)/i.test(err)) {
+    const used = err.match(/Used (\d+)/)?.[1];
+    const limit = err.match(/Limit (\d+)/)?.[1];
+    const usage =
+      used && limit
+        ? `Used ${parseInt(used).toLocaleString()} of ${parseInt(limit).toLocaleString()} tokens today.`
+        : "Daily token quota exhausted.";
+    return {
+      kind: "groq_tpd",
+      headline: "Groq daily token limit reached",
+      hint: `${usage} Resets at midnight UTC. Upgrade Groq tier or reduce per-run cost (smaller test set, smaller judge model) to keep iterating today.`,
+    };
+  }
+  if (/tokens per minute \(TPM\)/i.test(err)) {
+    return {
+      kind: "groq_tpm",
+      headline: "Groq per-minute token limit hit",
+      hint: "Too many tokens in a 60-second window. Lower the runner's concurrency or RPM cap.",
+    };
+  }
+  if (/requests per minute \(RPM\)/i.test(err)) {
+    return {
+      kind: "groq_rpm",
+      headline: "Groq per-minute request limit hit",
+      hint: "Too many requests in a 60-second window. The built-in 28 RPM limiter should prevent this — if you see it, check for parallel runs.",
+    };
+  }
+  if (/rate_limit_exceeded/.test(err) || /Error code: 429/.test(err)) {
+    return {
+      kind: "groq_429",
+      headline: "Groq rate limit reached",
+      hint: "Hit a Groq throttle. Wait a moment and re-run, or check your tier limits.",
+    };
+  }
+  if (/json parse failed/i.test(err) || /JSONDecodeError/.test(err)) {
+    return {
+      kind: "json_parse",
+      headline: "LLM returned invalid JSON",
+      hint: "The model didn't return parseable JSON. Usually transient — re-run the case.",
+    };
+  }
+  if (/ConnectError|ConnectionError|TimeoutError|httpx|ReadTimeout/.test(err)) {
+    return {
+      kind: "network",
+      headline: "Network error reaching LLM provider",
+      hint: "Could be a transient blip or a provider-side outage. Retry the run.",
+    };
+  }
+  if (/judge response missing fields|judge score out of range/.test(err)) {
+    return {
+      kind: "judge_shape",
+      headline: "Judge returned an invalid score",
+      hint: "Judge JSON had missing fields or a score outside 1-5. Usually transient.",
+    };
+  }
+  const firstLine = err.split("\n")[0]?.slice(0, 120) || "Unknown error";
+  return { kind: `other:${firstLine}`, headline: firstLine };
+}
+
+function ErrorGroups({ caseResults }: { caseResults: CaseResult[] }) {
+  const groups = new Map<string, { summary: ErrorSummary; errors: CaseResult[] }>();
+  for (const cr of caseResults) {
+    if (!cr.error) continue;
+    const summary = summarizeError(cr.error);
+    const existing = groups.get(summary.kind);
+    if (existing) existing.errors.push(cr);
+    else groups.set(summary.kind, { summary, errors: [cr] });
+  }
+  const sorted = [...groups.values()].sort((a, b) => b.errors.length - a.errors.length);
+
+  return (
+    <div className="space-y-3">
+      {sorted.map(({ summary, errors }) => (
+        <ErrorGroup key={summary.kind} summary={summary} errors={errors} />
+      ))}
+    </div>
+  );
+}
+
+function ErrorDetail({ error }: { error: string }) {
+  const summary = summarizeError(error);
+  return (
+    <div className="rounded-lg border border-destructive/30 bg-destructive/[0.04] p-4 space-y-2">
+      <p className="text-sm text-destructive font-medium">{summary.headline}</p>
+      {summary.hint && (
+        <p className="text-xs text-muted-foreground leading-relaxed">{summary.hint}</p>
+      )}
+      <details className="text-xs">
+        <summary className="cursor-pointer text-[10px] font-mono uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors">
+          Show raw error
+        </summary>
+        <pre className="mt-2 rounded bg-muted/60 p-3 text-[11px] whitespace-pre-wrap text-muted-foreground leading-relaxed">
+          {error}
+        </pre>
+      </details>
+    </div>
+  );
+}
+
+function ErrorGroup({
+  summary,
+  errors,
+}: {
+  summary: ErrorSummary;
+  errors: CaseResult[];
+}) {
+  return (
+    <div className="rounded-lg border border-destructive/30 bg-destructive/[0.04] p-4 space-y-2">
+      <div className="flex items-baseline justify-between gap-3 flex-wrap">
+        <p className="text-sm text-destructive font-medium">{summary.headline}</p>
+        <span className="font-mono text-xs text-destructive/80 tabular-nums">
+          {errors.length} case{errors.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {summary.hint && (
+        <p className="text-xs text-muted-foreground leading-relaxed">{summary.hint}</p>
+      )}
+      <Collapsible>
+        <CollapsibleTrigger asChild>
+          <button className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors">
+            Show raw error
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-2">
+          <pre className="rounded bg-muted/60 p-3 text-[11px] whitespace-pre-wrap text-muted-foreground leading-relaxed">
+            {errors[0].error}
+          </pre>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }
@@ -608,40 +746,53 @@ function WorstCard({
     <Card>
       <CardHeader>
         <div className="flex items-start justify-between gap-3">
-          <CardTitle className="text-sm font-normal">{input}</CardTitle>
-          <Badge variant={score <= 2 ? "destructive" : "secondary"}>
+          <CardTitle className="text-sm font-normal leading-relaxed">{input}</CardTitle>
+          <Badge
+            variant={score >= 4 ? "pass" : score <= 2 ? "destructive" : "secondary"}
+          >
             score {score}
           </Badge>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4">
         {cr?.agent_output && (
-          <div>
-            <p className="text-xs uppercase text-muted-foreground">Agent output</p>
-            <pre className="whitespace-pre-wrap text-sm">{cr.agent_output}</pre>
+          <div className="space-y-1.5">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="eyebrow">Agent output</p>
+              {cr.agent_latency_ms != null && (
+                <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+                  {cr.agent_latency_ms}ms
+                </span>
+              )}
+            </div>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">
+              {cr.agent_output}
+            </p>
           </div>
         )}
         {reasoning && (
-          <div>
-            <p className="text-xs uppercase text-muted-foreground">Judge reasoning</p>
-            <p className="text-sm">{reasoning}</p>
+          <div className="space-y-1.5">
+            <p className="eyebrow">Judge reasoning</p>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
+              {reasoning}
+            </p>
           </div>
         )}
-        {cr && (
+        {cr && (cr.agent_prompt_sent || cr.judge_prompt_sent) && (
           <Collapsible>
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" className="px-0 text-[10px] font-mono uppercase tracking-widest text-muted-foreground hover:text-foreground">
                 Show full prompts
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-2 pt-2">
               {cr.agent_prompt_sent && (
-                <pre className="rounded bg-muted p-3 text-xs whitespace-pre-wrap">
+                <pre className="rounded bg-muted/40 p-3 text-[11px] whitespace-pre-wrap text-muted-foreground leading-relaxed max-h-64 overflow-y-auto">
                   {cr.agent_prompt_sent}
                 </pre>
               )}
               {cr.judge_prompt_sent && (
-                <pre className="rounded bg-muted p-3 text-xs whitespace-pre-wrap">
+                <pre className="rounded bg-muted/40 p-3 text-[11px] whitespace-pre-wrap text-muted-foreground leading-relaxed max-h-64 overflow-y-auto">
                   {cr.judge_prompt_sent}
                 </pre>
               )}
@@ -673,9 +824,15 @@ function AllResultsTable({ caseResults }: { caseResults: CaseResult[] }) {
               onClick={() => setOpen(c)}
             >
               <TableCell className="max-w-md truncate">
-                {c.agent_prompt_sent
-                  ? extractUserFromPrompt(c.agent_prompt_sent).slice(0, 80)
-                  : c.error || "—"}
+                {c.error ? (
+                  <span className="italic text-destructive/90">
+                    {summarizeError(c.error).headline}
+                  </span>
+                ) : c.agent_prompt_sent ? (
+                  extractUserFromPrompt(c.agent_prompt_sent).slice(0, 80)
+                ) : (
+                  "—"
+                )}
               </TableCell>
               <TableCell className="text-right">
                 {c.error ? (
@@ -692,49 +849,87 @@ function AllResultsTable({ caseResults }: { caseResults: CaseResult[] }) {
         </TableBody>
       </Table>
       <Dialog open={!!open} onOpenChange={(v) => !v && setOpen(null)}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-5xl w-[95vw] sm:w-[90vw] max-h-[88vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Case result</DialogTitle>
+            <DialogTitle className="text-base font-medium">Case result</DialogTitle>
           </DialogHeader>
           {open && (
-            <div className="space-y-3 text-sm">
+            <div className="space-y-6 text-sm">
               {open.error ? (
-                <pre className="rounded bg-destructive/10 p-3 text-destructive whitespace-pre-wrap">
-                  {open.error}
-                </pre>
+                <ErrorDetail error={open.error} />
               ) : (
                 <>
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">
-                      Agent output
-                    </p>
-                    <pre className="whitespace-pre-wrap">{open.agent_output}</pre>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">
-                      Judge score: {open.judge_score}
-                    </p>
-                    <p>{open.judge_reasoning}</p>
-                  </div>
                   {open.agent_prompt_sent && (
-                    <details>
-                      <summary className="cursor-pointer text-xs uppercase text-muted-foreground">
-                        Agent prompt sent
-                      </summary>
-                      <pre className="mt-2 rounded bg-muted p-3 text-xs whitespace-pre-wrap">
-                        {open.agent_prompt_sent}
-                      </pre>
-                    </details>
+                    <div className="space-y-2">
+                      <p className="eyebrow">User message</p>
+                      <p className="rounded-md bg-muted/50 px-4 py-3 leading-relaxed whitespace-pre-wrap">
+                        {extractUserFromPrompt(open.agent_prompt_sent)}
+                      </p>
+                    </div>
                   )}
-                  {open.judge_prompt_sent && (
-                    <details>
-                      <summary className="cursor-pointer text-xs uppercase text-muted-foreground">
-                        Judge prompt sent
-                      </summary>
-                      <pre className="mt-2 rounded bg-muted p-3 text-xs whitespace-pre-wrap">
-                        {open.judge_prompt_sent}
-                      </pre>
-                    </details>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    <div className="space-y-2">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <p className="eyebrow">Agent output</p>
+                        {open.agent_latency_ms != null && (
+                          <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+                            {open.agent_latency_ms}ms
+                          </span>
+                        )}
+                      </div>
+                      <div className="rounded-md border border-border bg-card px-4 py-3 leading-relaxed whitespace-pre-wrap min-h-[6rem]">
+                        {open.agent_output ?? <span className="text-muted-foreground italic">no output</span>}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <p className="eyebrow">Judge</p>
+                        {open.judge_score != null && (
+                          <Badge
+                            variant={
+                              open.judge_score >= 4
+                                ? "pass"
+                                : open.judge_score <= 2
+                                ? "destructive"
+                                : "secondary"
+                            }
+                          >
+                            score {open.judge_score}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="rounded-md border border-border bg-card px-4 py-3 leading-relaxed whitespace-pre-wrap min-h-[6rem]">
+                        {open.judge_reasoning ?? <span className="text-muted-foreground italic">no reasoning</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {(open.agent_prompt_sent || open.judge_prompt_sent) && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 pt-3 border-t border-border/40">
+                      {open.agent_prompt_sent && (
+                        <details className="group">
+                          <summary className="cursor-pointer text-[10px] font-mono uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors list-none flex items-center gap-1.5">
+                            <span className="inline-block transition-transform group-open:rotate-90">›</span>
+                            Show full agent prompt
+                          </summary>
+                          <pre className="mt-2 rounded bg-muted/40 p-3 text-[11px] whitespace-pre-wrap text-muted-foreground leading-relaxed max-h-[40vh] overflow-y-auto">
+                            {open.agent_prompt_sent}
+                          </pre>
+                        </details>
+                      )}
+                      {open.judge_prompt_sent && (
+                        <details className="group">
+                          <summary className="cursor-pointer text-[10px] font-mono uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors list-none flex items-center gap-1.5">
+                            <span className="inline-block transition-transform group-open:rotate-90">›</span>
+                            Show full judge prompt
+                          </summary>
+                          <pre className="mt-2 rounded bg-muted/40 p-3 text-[11px] whitespace-pre-wrap text-muted-foreground leading-relaxed max-h-[40vh] overflow-y-auto">
+                            {open.judge_prompt_sent}
+                          </pre>
+                        </details>
+                      )}
+                    </div>
                   )}
                 </>
               )}

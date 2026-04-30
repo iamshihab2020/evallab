@@ -23,6 +23,7 @@ class TestSet(Base):
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(nullable=False)
     description: Mapped[str | None] = mapped_column(nullable=True)
+    domain_context: Mapped[str | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(TS_TZ, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         TS_TZ, nullable=False, server_default=func.now(), onupdate=func.now()

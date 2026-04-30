@@ -140,3 +140,20 @@ async def call_llm_json(
             continue
 
     raise RuntimeError(last_error or "call_llm_json failed without specific error")
+
+
+def domain_context_block(domain_context: str | None) -> str:
+    """Render the optional DOMAIN CONTEXT block injected into judge/cluster/diff prompts.
+
+    Returns empty string when unset so the surrounding prompt stays domain-neutral.
+    When set, anchors the LLM's interpretation of the rubric to the agent's domain.
+    """
+    if not domain_context or not domain_context.strip():
+        return ""
+    return (
+        "DOMAIN CONTEXT:\n"
+        f"{domain_context.strip()}\n"
+        "Interpret the dimensions above in light of this context. For example, "
+        "\"tone\" depends on what is appropriate for this agent's purpose; "
+        "\"safety\" depends on what is out-of-scope for this agent.\n\n"
+    )

@@ -78,6 +78,7 @@ export default function TestSetDetailPage() {
   return (
     <div>
       <PageHeader
+        back={{ href: "/test-sets", label: "Test sets" }}
         eyebrow={
           <>
             <Link href="/test-sets" className="hover:text-foreground transition-colors">
@@ -100,6 +101,14 @@ export default function TestSetDetailPage() {
         }
       />
       <div className="space-y-6">
+      {data.domain_context && (
+        <div className="rounded-lg border border-border bg-card p-5 space-y-2 fade-up">
+          <p className="eyebrow-muted">Domain context</p>
+          <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+            {data.domain_context}
+          </p>
+        </div>
+      )}
       <CasesView testSetId={id} testSetName={data.name} cases={data.cases} />
       </div>
     </div>
@@ -266,6 +275,7 @@ function CasesView({
 const editTestSetSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().optional(),
+  domain_context: z.string().optional(),
 });
 type EditTestSetValues = z.infer<typeof editTestSetSchema>;
 
@@ -282,6 +292,7 @@ function EditTestSetDialog({ testSet }: { testSet: TestSetDetail }) {
     defaultValues: {
       name: testSet.name,
       description: testSet.description ?? "",
+      domain_context: testSet.domain_context ?? "",
     },
   });
 
@@ -292,6 +303,7 @@ function EditTestSetDialog({ testSet }: { testSet: TestSetDetail }) {
         body: JSON.stringify({
           name: values.name,
           description: values.description || null,
+          domain_context: values.domain_context || null,
         }),
       }),
     onSuccess: () => {
@@ -312,6 +324,7 @@ function EditTestSetDialog({ testSet }: { testSet: TestSetDetail }) {
           reset({
             name: testSet.name,
             description: testSet.description ?? "",
+            domain_context: testSet.domain_context ?? "",
           });
         }
       }}
@@ -337,6 +350,18 @@ function EditTestSetDialog({ testSet }: { testSet: TestSetDetail }) {
           <div className="space-y-2">
             <Label htmlFor="edit-description">Description</Label>
             <Textarea id="edit-description" rows={3} {...register("description")} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-domain-context">Domain context</Label>
+            <Textarea
+              id="edit-domain-context"
+              rows={4}
+              placeholder="One or two sentences describing what this agent does. Helps the eval judge interpret tone and scope."
+              {...register("domain_context")}
+            />
+            <p className="text-xs text-muted-foreground">
+              Injected into judge / cluster / compare prompts.
+            </p>
           </div>
           <DialogFooter>
             <Button type="submit" disabled={mutation.isPending}>

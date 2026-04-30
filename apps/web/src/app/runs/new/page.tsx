@@ -74,6 +74,7 @@ export default function NewRunPage() {
   return (
     <div>
       <PageHeader
+        back={{ href: "/runs", label: "Runs" }}
         eyebrow={
           <>
             <Link href="/runs" className="hover:text-foreground transition-colors">

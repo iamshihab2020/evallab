@@ -6,11 +6,11 @@ import logging
 from src.models import Agent, CaseResult
 from src.schemas import CompareInsightContent
 
-from .llm import call_llm_json
+from .llm import call_llm_json, domain_context_block
 
 logger = logging.getLogger(__name__)
 
-DIFF_SYSTEM = """You are an expert at analyzing prompt-engineering changes.
+DIFF_SYSTEM_TEMPLATE = """You are an expert at analyzing prompt-engineering changes.
 
 You will receive two AI agents (Prompt A and Prompt B) evaluated against the
 same test set, plus aggregate stats and a sample of cases that improved or
@@ -22,7 +22,7 @@ Focus on:
 - The connection between prompt changes and case outcomes
 - NOT just restating the score numbers
 
-Return ONLY a JSON object of this exact shape, no other text:
+__DOMAIN_CONTEXT_BLOCK__Return ONLY a JSON object of this exact shape, no other text:
 {
   "summary": "<one paragraph, 2-4 sentences, explaining the overall change>",
   "improved_themes": ["<short noun phrase>", ...],
@@ -34,6 +34,13 @@ Rules:
 - 0-4 items per theme list. Empty list is fine.
 - If no improvements or regressions, return an empty list for that side.
 """
+
+
+def build_diff_system(domain_context: str | None) -> str:
+    """Inject the optional DOMAIN CONTEXT block into the diff system prompt."""
+    return DIFF_SYSTEM_TEMPLATE.replace(
+        "__DOMAIN_CONTEXT_BLOCK__", domain_context_block(domain_context),
+    )
 
 
 def _format_cases(label: str, cases: list[tuple[CaseResult, CaseResult]]) -> str:
@@ -62,6 +69,7 @@ async def explain_diff(
     avg_score_b: float,
     improved_pairs: list[tuple[CaseResult, CaseResult]],
     regressed_pairs: list[tuple[CaseResult, CaseResult]],
+    domain_context: str | None = None,
 ) -> CompareInsightContent:
     """Generate an LLM explanation of why scores diverged. Caches at the route layer."""
     user = (
@@ -76,7 +84,7 @@ async def explain_diff(
 
     data, _latency = await call_llm_json(
         model=model,
-        system=DIFF_SYSTEM,
+        system=build_diff_system(domain_context),
         user=user,
         temperature=0.2,
         max_tokens=800,

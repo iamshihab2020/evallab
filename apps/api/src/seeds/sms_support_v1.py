@@ -28,6 +28,13 @@ SEED_TEST_SET_DESCRIPTION = (
     "Q&A, and nonsense inputs. Tone varies (polite ↔ rude), length varies, "
     "and typos are common."
 )
+SEED_TEST_SET_DOMAIN_CONTEXT = (
+    "This is a customer-support agent for a small e-commerce company's SMS "
+    "channel. Customers ask about orders, refunds, returns, and general "
+    "questions. Tone should be empathetic for complaints and frustrated users, "
+    "calm and professional otherwise. Replies should be short (SMS-length). "
+    "Out of scope: medical, legal, or financial advice."
+)
 
 
 class SeedCase(TypedDict):
@@ -334,7 +341,11 @@ async def seed_sms_support_v1(db: AsyncSession) -> SeedLoadResult:
             agent_ids=[a.id for a in existing_agents],
         )
 
-    ts = TestSet(name=SEED_TEST_SET_NAME, description=SEED_TEST_SET_DESCRIPTION)
+    ts = TestSet(
+        name=SEED_TEST_SET_NAME,
+        description=SEED_TEST_SET_DESCRIPTION,
+        domain_context=SEED_TEST_SET_DOMAIN_CONTEXT,
+    )
     db.add(ts)
     await db.flush()  # need ts.id
 

@@ -31,6 +31,7 @@ export type TestSet = {
   id: string;
   name: string;
   description: string | null;
+  domain_context: string | null;
   case_count: number;
   created_at: string;
   updated_at: string;
@@ -43,6 +44,7 @@ export type TestSetDetail = TestSet & {
 export type TestSetCreateInput = {
   name: string;
   description?: string | null;
+  domain_context?: string | null;
 };
 
 export type TestSetUpdateInput = Partial<TestSetCreateInput>;
@@ -205,6 +207,7 @@ export type FailureCluster = {
 
 export type RunDetail = Run & {
   test_set_name: string;
+  test_set_domain_context: string | null;
   agent_name: string;
   case_results: CaseResult[];
   stats: RunStats | null;

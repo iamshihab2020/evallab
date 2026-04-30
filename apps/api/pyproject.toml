@@ -35,6 +35,11 @@ ignore = ["B008"]
 [tool.ruff.lint.per-file-ignores]
 # Seed data has long natural-language strings that don't fit on one line cleanly.
 "src/seeds/*.py" = ["E501"]
+# LLM system prompts are long natural-language strings; reflowing hurts readability
+# and changes what the model sees.
+"src/services/judge.py" = ["E501"]
+"src/services/clustering.py" = ["E501"]
+"src/services/diff_analyzer.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"

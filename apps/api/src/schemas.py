@@ -37,11 +37,13 @@ class TestCaseRead(TestCaseBase):
 class TestSetCreate(BaseModel):
     name: str = Field(..., min_length=1)
     description: str | None = None
+    domain_context: str | None = None
 
 
 class TestSetUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     description: str | None = None
+    domain_context: str | None = None
 
 
 class TestSetRead(BaseModel):
@@ -53,6 +55,7 @@ class TestSetRead(BaseModel):
     id: UUID
     name: str
     description: str | None
+    domain_context: str | None
     case_count: int
     created_at: datetime
     updated_at: datetime
@@ -268,6 +271,7 @@ class FailureCluster(BaseModel):
 
 class RunDetail(RunRead):
     test_set_name: str
+    test_set_domain_context: str | None = None
     agent_name: str
     case_results: list[CaseResultRead]
     stats: RunStats | None

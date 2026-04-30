@@ -66,7 +66,10 @@ async def create_agent(body: AgentCreate, db: AsyncSession = Depends(get_db)) ->
     await db.flush()  # so agent.id is available for the version row
     db.add(_make_version(agent, version=1))
     await db.commit()
-    await db.refresh(agent, attribute_names=["versions"])
+    agent = await db.scalar(
+        select(Agent).options(selectinload(Agent.versions)).where(Agent.id == agent.id),
+    )
+    assert agent is not None
     return _agent_to_read(agent)
 
 
@@ -134,7 +137,10 @@ async def update_agent(
         db.add(_make_version(agent, version=_next_version(agent)))
 
     await db.commit()
-    await db.refresh(agent, attribute_names=["versions"])
+    agent = await db.scalar(
+        select(Agent).options(selectinload(Agent.versions)).where(Agent.id == agent_id),
+    )
+    assert agent is not None
     return _agent_to_read(agent)
 
 

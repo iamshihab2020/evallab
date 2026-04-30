@@ -22,6 +22,7 @@ def _to_read(ts: TestSet, case_count: int) -> TestSetRead:
         id=ts.id,
         name=ts.name,
         description=ts.description,
+        domain_context=ts.domain_context,
         case_count=case_count,
         created_at=ts.created_at,
         updated_at=ts.updated_at,
@@ -48,7 +49,11 @@ async def list_test_sets(db: AsyncSession = Depends(get_db)) -> list[TestSetRead
 async def create_test_set(
     body: TestSetCreate, db: AsyncSession = Depends(get_db)
 ) -> TestSetRead:
-    ts = TestSet(name=body.name, description=body.description)
+    ts = TestSet(
+        name=body.name,
+        description=body.description,
+        domain_context=body.domain_context,
+    )
     db.add(ts)
     await db.commit()
     await db.refresh(ts)
@@ -71,6 +76,7 @@ async def get_test_set(
         id=ts.id,
         name=ts.name,
         description=ts.description,
+        domain_context=ts.domain_context,
         case_count=len(ts.cases),
         created_at=ts.created_at,
         updated_at=ts.updated_at,
@@ -91,6 +97,8 @@ async def update_test_set(
         ts.name = body.name
     if body.description is not None:
         ts.description = body.description
+    if body.domain_context is not None:
+        ts.domain_context = body.domain_context
     await db.commit()
     await db.refresh(ts)
     count = await db.scalar(

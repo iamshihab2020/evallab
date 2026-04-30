@@ -193,6 +193,7 @@ async def _build_run_detail(run_id: UUID, db: AsyncSession) -> RunDetail:
         errored_cases=run.errored_cases,
         error=run.error,
         test_set_name=test_set.name if test_set else "",
+        test_set_domain_context=test_set.domain_context if test_set else None,
         agent_name=agent.name if agent else "",
         case_results=[CaseResultRead.model_validate(cr) for cr in case_results],
         stats=stats,
@@ -312,7 +313,12 @@ async def cluster_run_failures(
         await db.commit()
         return []
 
-    clusters = await cluster_failures(model=run.judge_model, failures=failures)
+    test_set = await db.get(TestSet, run.test_set_id)
+    clusters = await cluster_failures(
+        model=run.judge_model,
+        failures=failures,
+        domain_context=test_set.domain_context if test_set else None,
+    )
     run.failure_clusters = [c.model_dump(mode="json") for c in clusters]
     await db.commit()
     return clusters
@@ -394,6 +400,7 @@ async def explain_compare(
     stats_a = compute_stats(by_run.get(a, []))
     stats_b = compute_stats(by_run.get(b, []))
 
+    test_set = await db.get(TestSet, run_a.test_set_id)
     insight = await explain_diff(
         model=run_a.judge_model,
         agent_a=agent_a,
@@ -404,6 +411,7 @@ async def explain_compare(
         avg_score_b=stats_b.avg_score,
         improved_pairs=improved_pairs[:3],
         regressed_pairs=regressed_pairs[:3],
+        domain_context=test_set.domain_context if test_set else None,
     )
 
     db.add(

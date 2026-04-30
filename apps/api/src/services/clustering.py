@@ -7,30 +7,31 @@ from uuid import UUID
 from src.models import CaseResult
 from src.schemas import FailureCluster
 
-from .llm import call_llm_json
+from .llm import call_llm_json, domain_context_block
 
 logger = logging.getLogger(__name__)
 
-CLUSTER_SYSTEM = """You are an expert at analyzing AI agent failures. Your job is to group failed cases by what the AGENT did wrong — not by what the user asked about.
+CLUSTER_SYSTEM_TEMPLATE = """You are an expert at analyzing AI agent failures. Your job is to group failed cases by what the AGENT did wrong - not by what the user asked about.
 
 CRITICAL: Cluster by the agent's failure mode, NOT by user topic.
-- Bad theme: "Refund inquiries" (this is a user topic — useless for fixing the agent)
-- Good theme: "Hallucinated refund amounts" (this is a failure mode — points to a fix)
+- Bad theme: "Refund inquiries" (this is a user topic - useless for fixing the agent)
+- Good theme: "Hallucinated refund amounts" (this is a failure mode - points to a fix)
+(The example above is from one possible domain; invent themes that fit the actual failures you see.)
 
-INPUT: Each case includes the user's INPUT, the AGENT_OUTPUT, and the JUDGE_REASONING. The JUDGE_REASONING is your strongest signal — the judge has already identified what failed. Use it as the primary clustering basis; use input/output as supporting context.
+INPUT: Each case includes the user's INPUT, the AGENT_OUTPUT, and the JUDGE_REASONING. The JUDGE_REASONING is your strongest signal - the judge has already identified what failed. Use it as the primary clustering basis; use input/output as supporting context.
 
 THEME GUIDELINES:
 - Short noun phrase, max 6 words. Specific beats brief.
-- Good examples (invent themes that fit the actual failures): "Missing empathy in complaints", "Failed to ask for order ID", "Hallucinated policy details"
+- Good shape (illustrative only - invent themes that fit your failures): "Missing empathy in complaints", "Failed to ask for order ID", "Hallucinated policy details"
 - Bad: "Tone issues" (too vague), "Refund inquiries" (user topic), "Agent doesn't ask for clarification" (sentence, not noun phrase)
 
 CLUSTERING RULES:
 - Aim for one cluster per ~3-5 failures, 1-5 clusters total. Fewer when failures are homogeneous.
 - Every input case_result_id must appear in exactly one cluster. Never invent IDs.
-- If a case is genuinely unique, place it in the closest-matching cluster — do not create one-off clusters.
+- If a case is genuinely unique, place it in the closest-matching cluster - do not create one-off clusters.
 - Sort clusters largest-first (most case_result_ids first).
 
-Return ONLY a JSON object of this shape, no other text:
+__DOMAIN_CONTEXT_BLOCK__Return ONLY a JSON object of this shape, no other text:
 {
   "clusters": [
     {
@@ -41,6 +42,13 @@ Return ONLY a JSON object of this shape, no other text:
   ]
 }
 """
+
+
+def build_cluster_system(domain_context: str | None) -> str:
+    """Inject the optional DOMAIN CONTEXT block into the cluster system prompt."""
+    return CLUSTER_SYSTEM_TEMPLATE.replace(
+        "__DOMAIN_CONTEXT_BLOCK__", domain_context_block(domain_context),
+    )
 
 
 def _build_user_prompt(failures: list[CaseResult]) -> str:
@@ -61,6 +69,7 @@ async def cluster_failures(
     *,
     model: str,
     failures: list[CaseResult],
+    domain_context: str | None = None,
 ) -> list[FailureCluster]:
     """Cluster low-scoring cases. Returns empty list if no failures."""
     if not failures:
@@ -71,7 +80,7 @@ async def cluster_failures(
 
     data, _latency = await call_llm_json(
         model=model,
-        system=CLUSTER_SYSTEM,
+        system=build_cluster_system(domain_context),
         user=user_prompt,
         temperature=0.2,
         max_tokens=1200,

@@ -19,6 +19,7 @@ import type { TestSet } from "@/lib/types";
 const schema = z.object({
   name: z.string().min(1, "Name is required").max(255),
   description: z.string().optional(),
+  domain_context: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -40,6 +41,7 @@ export default function NewTestSetPage() {
         body: JSON.stringify({
           name: values.name,
           description: values.description || null,
+          domain_context: values.domain_context || null,
         }),
       }),
     onSuccess: (ts) => {
@@ -53,6 +55,7 @@ export default function NewTestSetPage() {
   return (
     <div>
       <PageHeader
+        back={{ href: "/test-sets", label: "Test sets" }}
         eyebrow={
           <>
             <Link href="/test-sets" className="hover:text-foreground transition-colors">
@@ -87,6 +90,19 @@ export default function NewTestSetPage() {
               placeholder="What does this test set cover? e.g. 'Refunds, complaints, Q&A and nonsense inputs.'"
               {...register("description")}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="domain_context">Domain context (optional)</Label>
+            <Textarea
+              id="domain_context"
+              rows={4}
+              placeholder="One or two sentences describing what this agent does. Helps the eval judge interpret tone and scope. Example: 'This is a Python coding assistant for beginners.'"
+              {...register("domain_context")}
+            />
+            <p className="text-xs text-muted-foreground">
+              Injected into judge / cluster / compare prompts so eval generalizes beyond customer support.
+            </p>
           </div>
 
           <div className="flex items-center gap-2 pt-2">
