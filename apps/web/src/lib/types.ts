@@ -157,11 +157,24 @@ export type RunStats = {
   worst_cases: WorstCase[];
 };
 
+export type FailureCluster = {
+  theme: string;
+  summary: string;
+  case_result_ids: string[];
+};
+
 export type RunDetail = Run & {
   test_set_name: string;
   agent_name: string;
   case_results: CaseResult[];
   stats: RunStats | null;
+  failure_clusters: FailureCluster[] | null;
+};
+
+export type CompareInsight = {
+  summary: string;
+  improved_themes: string[];
+  regressed_themes: string[];
 };
 
 export type RunStartInput = {

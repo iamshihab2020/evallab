@@ -1,9 +1,7 @@
 """LLM-as-judge: scores an agent response 1-5 against the expected behavior."""
 from __future__ import annotations
 
-import json
-
-from .llm import call_llm
+from .llm import call_llm_json
 
 JUDGE_SYSTEM = """You are an expert evaluator of customer-support AI agents.
 Your job is to score the agent's response against the expected behavior on a 1-5 scale.
@@ -47,31 +45,18 @@ async def judge_response(
     )
     full_prompt = f"SYSTEM:\n{JUDGE_SYSTEM}\n\nUSER:\n{user}"
 
-    last_error: str | None = None
-    for attempt in range(2):
-        system = (
-            JUDGE_SYSTEM
-            if attempt == 0
-            else JUDGE_SYSTEM
-            + "\n\nREMINDER: Return ONLY valid JSON, no markdown fences, no preamble."
-        )
-        content, latency_ms = await call_llm(
-            model=model,
-            system=system,
-            user=user,
-            temperature=0.0,
-            max_tokens=200,
-            response_format={"type": "json_object"},
-        )
-        try:
-            data = json.loads(content)
-            score = int(data["score"])
-            reasoning = str(data["reasoning"])
-            if not 1 <= score <= 5:
-                raise ValueError(f"score out of range: {score}")
-            return score, reasoning, full_prompt, latency_ms
-        except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
-            last_error = f"judge JSON parse failed: {e}; content was: {content[:200]}"
-            continue
-
-    raise RuntimeError(last_error or "judge failed without specific error")
+    data, latency_ms = await call_llm_json(
+        model=model,
+        system=JUDGE_SYSTEM,
+        user=user,
+        temperature=0.0,
+        max_tokens=200,
+    )
+    try:
+        score = int(data["score"])
+        reasoning = str(data["reasoning"])
+    except (KeyError, ValueError, TypeError) as e:
+        raise RuntimeError(f"judge response missing fields: {e}; got: {data}") from e
+    if not 1 <= score <= 5:
+        raise RuntimeError(f"judge score out of range: {score}")
+    return score, reasoning, full_prompt, latency_ms

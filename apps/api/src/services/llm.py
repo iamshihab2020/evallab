@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from typing import Any
@@ -99,3 +100,43 @@ async def call_llm(
             await asyncio.sleep(backoff)
 
     raise RuntimeError(f"call_llm failed after 4 attempts: {last_err}")
+
+
+async def call_llm_json(
+    *,
+    model: str,
+    system: str,
+    user: str,
+    temperature: float = 0.0,
+    max_tokens: int = 800,
+) -> tuple[dict[str, Any], int]:
+    """Call Groq with response_format=json_object, parse-retry once on bad JSON.
+
+    Returns (parsed_dict, latency_ms_of_successful_call). Raises RuntimeError after
+    both attempts fail.
+    """
+    last_error: str | None = None
+    for attempt in range(2):
+        sys_prompt = (
+            system
+            if attempt == 0
+            else system + "\n\nREMINDER: Return ONLY valid JSON, no markdown fences, no preamble."
+        )
+        content, latency_ms = await call_llm(
+            model=model,
+            system=sys_prompt,
+            user=user,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
+        )
+        try:
+            data = json.loads(content)
+            if not isinstance(data, dict):
+                raise ValueError(f"expected JSON object, got {type(data).__name__}")
+            return data, latency_ms
+        except (json.JSONDecodeError, ValueError) as e:
+            last_error = f"json parse failed: {e}; content was: {content[:200]}"
+            continue
+
+    raise RuntimeError(last_error or "call_llm_json failed without specific error")

@@ -225,11 +225,24 @@ class RunListItem(BaseModel):
     pass_rate: float | None
 
 
+class FailureCluster(BaseModel):
+    theme: str
+    summary: str
+    case_result_ids: list[UUID]
+
+
 class RunDetail(RunRead):
     test_set_name: str
     agent_name: str
     case_results: list[CaseResultRead]
     stats: RunStats | None
+    failure_clusters: list[FailureCluster] | None = None
+
+
+class CompareInsightContent(BaseModel):
+    summary: str
+    improved_themes: list[str]
+    regressed_themes: list[str]
 
 
 class RunCompare(BaseModel):
@@ -240,3 +253,4 @@ class RunCompare(BaseModel):
     cases_regressed: list[UUID]
     cases_unchanged: list[UUID]
     cases_errored: list[UUID]
+    insight: CompareInsightContent | None = None

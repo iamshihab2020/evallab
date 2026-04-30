@@ -11,15 +11,19 @@ from sqlalchemy.orm import selectinload
 
 from src.db import AsyncSessionLocal, get_db
 from src.deps import verify_api_key
-from src.models import Agent, CaseResult, Run, TestSet
+from src.models import Agent, CaseResult, CompareInsight, Run, TestSet
 from src.schemas import (
     CaseResultRead,
+    CompareInsightContent,
+    FailureCluster,
     RunCompare,
     RunDetail,
     RunListItem,
     RunRead,
     RunStart,
 )
+from src.services.clustering import cluster_failures
+from src.services.diff_analyzer import explain_diff
 from src.services.exporter import export_run_md
 from src.services.runner import execute_run
 from src.services.stats import compute_stats
@@ -133,6 +137,10 @@ async def _build_run_detail(run_id: UUID, db: AsyncSession) -> RunDetail:
     case_results = (await db.execute(cr_stmt)).scalars().all()
     stats = compute_stats(case_results) if run.status == "completed" else None
 
+    clusters: list[FailureCluster] | None = None
+    if run.failure_clusters is not None:
+        clusters = [FailureCluster.model_validate(c) for c in run.failure_clusters]
+
     return RunDetail(
         id=run.id,
         test_set_id=run.test_set_id,
@@ -149,6 +157,7 @@ async def _build_run_detail(run_id: UUID, db: AsyncSession) -> RunDetail:
         agent_name=agent.name if agent else "",
         case_results=[CaseResultRead.model_validate(cr) for cr in case_results],
         stats=stats,
+        failure_clusters=clusters,
     )
 
 
@@ -231,6 +240,126 @@ async def export_run(
             "Content-Disposition": f'attachment; filename="evallab-run-{run_id}.md"',
         },
     )
+
+
+@router.post("/{run_id}/cluster-failures", response_model=list[FailureCluster])
+async def cluster_run_failures(
+    run_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> list[FailureCluster]:
+    run = await db.get(Run, run_id)
+    if run is None:
+        raise HTTPException(404, "Run not found")
+    if run.status != "completed":
+        raise HTTPException(409, "Run must be completed before clustering.")
+
+    if run.failure_clusters is not None:
+        return [FailureCluster.model_validate(c) for c in run.failure_clusters]
+
+    cr_stmt = (
+        select(CaseResult)
+        .options(selectinload(CaseResult.test_case))
+        .where(
+            CaseResult.run_id == run_id,
+            CaseResult.error.is_(None),
+            CaseResult.judge_score.is_not(None),
+            CaseResult.judge_score <= 3,
+        )
+        .order_by(CaseResult.judge_score.asc())
+    )
+    failures = list((await db.execute(cr_stmt)).scalars().all())
+    if not failures:
+        run.failure_clusters = []
+        await db.commit()
+        return []
+
+    clusters = await cluster_failures(model=run.judge_model, failures=failures)
+    run.failure_clusters = [c.model_dump(mode="json") for c in clusters]
+    await db.commit()
+    return clusters
+
+
+@router.post("/compare/explain", response_model=CompareInsightContent)
+async def explain_compare(
+    a: UUID = Query(...),
+    b: UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+) -> CompareInsightContent:
+    cached = await db.get(CompareInsight, (a, b))
+    if cached is not None:
+        return CompareInsightContent.model_validate(cached.content)
+
+    run_a = await db.get(Run, a)
+    run_b = await db.get(Run, b)
+    if run_a is None or run_b is None:
+        raise HTTPException(404, "One or both runs not found")
+    if run_a.test_set_id != run_b.test_set_id:
+        raise HTTPException(400, "Cannot explain runs from different test sets.")
+    if run_a.status != "completed" or run_b.status != "completed":
+        raise HTTPException(409, "Both runs must be completed.")
+
+    agent_a = await db.get(Agent, run_a.agent_id)
+    agent_b = await db.get(Agent, run_b.agent_id)
+    if agent_a is None or agent_b is None:
+        raise HTTPException(404, "Agent for one or both runs not found")
+
+    cr_stmt = (
+        select(CaseResult)
+        .options(selectinload(CaseResult.test_case))
+        .where(CaseResult.run_id.in_([a, b]))
+    )
+    all_results = list((await db.execute(cr_stmt)).scalars().all())
+    by_run: dict[UUID, list[CaseResult]] = {}
+    for cr in all_results:
+        by_run.setdefault(cr.run_id, []).append(cr)
+    a_by_case = {cr.test_case_id: cr for cr in by_run.get(a, [])}
+    b_by_case = {cr.test_case_id: cr for cr in by_run.get(b, [])}
+
+    improved_pairs: list[tuple[CaseResult, CaseResult]] = []
+    regressed_pairs: list[tuple[CaseResult, CaseResult]] = []
+    for tc_id, ca in a_by_case.items():
+        cb = b_by_case.get(tc_id)
+        if cb is None or ca.judge_score is None or cb.judge_score is None:
+            continue
+        if ca.error or cb.error:
+            continue
+        delta = cb.judge_score - ca.judge_score
+        if delta > 0:
+            improved_pairs.append((ca, cb))
+        elif delta < 0:
+            regressed_pairs.append((ca, cb))
+
+    improved_pairs.sort(
+        key=lambda p: (p[1].judge_score or 0) - (p[0].judge_score or 0), reverse=True,
+    )
+    regressed_pairs.sort(
+        key=lambda p: (p[0].judge_score or 0) - (p[1].judge_score or 0), reverse=True,
+    )
+
+    stats_a = compute_stats(by_run.get(a, []))
+    stats_b = compute_stats(by_run.get(b, []))
+
+    insight = await explain_diff(
+        model=run_a.judge_model,
+        agent_a=agent_a,
+        agent_b=agent_b,
+        pass_rate_a=stats_a.pass_rate,
+        pass_rate_b=stats_b.pass_rate,
+        avg_score_a=stats_a.avg_score,
+        avg_score_b=stats_b.avg_score,
+        improved_pairs=improved_pairs[:3],
+        regressed_pairs=regressed_pairs[:3],
+    )
+
+    db.add(
+        CompareInsight(
+            run_a_id=a,
+            run_b_id=b,
+            content=insight.model_dump(mode="json"),
+        ),
+    )
+    await db.commit()
+    return insight
 
 
 @router.delete("/{run_id}", status_code=status.HTTP_204_NO_CONTENT)

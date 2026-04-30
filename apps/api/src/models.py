@@ -1,8 +1,10 @@
 import uuid
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import DateTime, ForeignKey, Index, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -83,6 +85,26 @@ class Run(Base):
     completed_cases: Mapped[int] = mapped_column(nullable=False, default=0)
     errored_cases: Mapped[int] = mapped_column(nullable=False, default=0)
     error: Mapped[str | None] = mapped_column(nullable=True)
+    failure_clusters: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+
+
+class CompareInsight(Base):
+    """Cached LLM explanation of why two runs differ. Keyed by the run pair."""
+
+    __tablename__ = "compare_insights"
+
+    run_a_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("runs.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    run_b_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("runs.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    content: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TS_TZ, nullable=False, server_default=func.now())
 
 
 class CaseResult(Base):

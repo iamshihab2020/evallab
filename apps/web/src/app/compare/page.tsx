@@ -1,10 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { ArrowRight, Loader2, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +32,12 @@ import {
 } from "@/components/ui/table";
 import { api, ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import type { CaseResult, RunCompare, RunListItem } from "@/lib/types";
+import type {
+  CaseResult,
+  CompareInsight,
+  RunCompare,
+  RunListItem,
+} from "@/lib/types";
 
 type SortDir = "improved" | "regressed" | "none";
 
@@ -241,6 +249,8 @@ function CompareView({ data }: { data: RunCompare }) {
         </p>
       </div>
 
+      <DiffExplainer aId={data.run_a.id} bId={data.run_b.id} />
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <RunStatsCard label="Run A" run={data.run_a} />
         <RunStatsCard label="Run B" run={data.run_b} />
@@ -427,4 +437,140 @@ function extractInput(cr: CaseResult): string {
   if (!cr.agent_prompt_sent) return cr.error || "—";
   const idx = cr.agent_prompt_sent.indexOf("USER:\n");
   return idx >= 0 ? cr.agent_prompt_sent.slice(idx + 6) : cr.agent_prompt_sent;
+}
+
+function DiffExplainer({ aId, bId }: { aId: string; bId: string }) {
+  const [insight, setInsight] = useState<CompareInsight | null>(null);
+  const mutation = useMutation({
+    mutationFn: () =>
+      api<CompareInsight>(
+        `/api/v1/runs/compare/explain?a=${aId}&b=${bId}`,
+        { method: "POST" },
+      ),
+    onSuccess: (data) => {
+      setInsight(data);
+      toast.success("Diff explanation ready");
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Failed to explain diff";
+      toast.error(msg);
+    },
+  });
+
+  if (insight === null) {
+    return (
+      <div className="relative overflow-hidden rounded-lg border border-border bg-card fade-up">
+        <span
+          aria-hidden
+          className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-foreground/40 to-transparent"
+        />
+        <div className="grid gap-6 p-6 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-10 sm:p-7">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2.5">
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background">
+                <Sparkles className="h-3.5 w-3.5" />
+              </span>
+              <p className="eyebrow !text-foreground">Diff explanation</p>
+            </div>
+            <h3 className="text-xl font-medium tracking-tight">
+              Why did scores change between A and B?
+            </h3>
+            <p className="text-sm text-muted-foreground max-w-xl">
+              Send both prompts, summary stats, and the cases that diverged most
+              to the judge model. It returns the behavioral patterns that
+              moved the score — not just the numbers.
+            </p>
+            <ul className="flex flex-wrap gap-x-5 gap-y-1.5 pt-1 text-[11px] font-mono uppercase tracking-widest text-muted-foreground">
+              <li className="flex items-center gap-1.5">
+                <span className="h-1 w-1 rounded-full bg-foreground/60" />
+                1 LLM call
+              </li>
+              <li className="flex items-center gap-1.5">
+                <span className="h-1 w-1 rounded-full bg-foreground/60" />
+                ~5–10s
+              </li>
+              <li className="flex items-center gap-1.5">
+                <span className="h-1 w-1 rounded-full bg-foreground/60" />
+                cached per pair
+              </li>
+            </ul>
+          </div>
+          <div className="flex sm:flex-col sm:items-end sm:gap-2">
+            <Button
+              type="button"
+              onClick={() => mutation.mutate()}
+              disabled={mutation.isPending}
+              className="gap-2"
+            >
+              {mutation.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Analyzing…
+                </>
+              ) : (
+                <>
+                  Explain the difference
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-6 space-y-4 fade-up">
+      <p className="eyebrow">Diff explanation</p>
+      <p className="text-sm leading-relaxed">{insight.summary}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+        <ThemeList
+          label="Why scores improved"
+          items={insight.improved_themes}
+          empty="No improvement themes."
+        />
+        <ThemeList
+          label="Why scores regressed"
+          items={insight.regressed_themes}
+          empty="No regression themes."
+          tone="destructive"
+        />
+      </div>
+    </div>
+  );
+}
+
+function ThemeList({
+  label,
+  items,
+  empty,
+  tone,
+}: {
+  label: string;
+  items: string[];
+  empty: string;
+  tone?: "destructive";
+}) {
+  return (
+    <div className="space-y-2">
+      <p
+        className={`eyebrow ${tone === "destructive" ? "text-destructive" : ""}`}
+      >
+        {label}
+      </p>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{empty}</p>
+      ) : (
+        <ul className="text-sm space-y-1.5">
+          {items.map((t, i) => (
+            <li key={i} className="flex gap-2">
+              <span className="text-muted-foreground">·</span>
+              <span>{t}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }

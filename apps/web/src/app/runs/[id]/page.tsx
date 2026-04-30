@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -34,7 +34,7 @@ import { PageHeader } from "@/components/page-header";
 import { api } from "@/lib/api";
 import { downloadFile } from "@/lib/download";
 import { formatDateTime } from "@/lib/format";
-import type { CaseResult, RunDetail } from "@/lib/types";
+import type { CaseResult, FailureCluster, RunDetail } from "@/lib/types";
 
 import { toast } from "sonner";
 
@@ -462,6 +462,8 @@ function CompletedView({ data }: { data: RunDetail }) {
         </div>
       </section>
 
+      <FailurePatterns runId={data.id} clusters={data.failure_clusters} />
+
       {/* Worst cases — 2-col on lg */}
       <section className="space-y-3">
         <p className="eyebrow">Worst {s.worst_cases.length} cases</p>
@@ -733,4 +735,83 @@ function AllResultsTable({ caseResults }: { caseResults: CaseResult[] }) {
 function extractUserFromPrompt(prompt: string): string {
   const idx = prompt.indexOf("USER:\n");
   return idx >= 0 ? prompt.slice(idx + 6) : prompt;
+}
+
+function FailurePatterns({
+  runId,
+  clusters,
+}: {
+  runId: string;
+  clusters: FailureCluster[] | null;
+}) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () =>
+      api<FailureCluster[]>(`/api/v1/runs/${runId}/cluster-failures`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: detailKey(runId) });
+      toast.success("Failure patterns ready");
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Failed to cluster failures";
+      toast.error(msg);
+    },
+  });
+
+  if (clusters !== null && clusters.length === 0) {
+    return (
+      <section className="space-y-3">
+        <p className="eyebrow">Failure patterns</p>
+        <p className="text-sm text-muted-foreground">
+          No low-scoring cases (≤ 3) — nothing to cluster.
+        </p>
+      </section>
+    );
+  }
+
+  if (clusters === null) {
+    return (
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between">
+          <p className="eyebrow">Failure patterns</p>
+          <p className="text-xs text-muted-foreground">1 LLM call · cached</p>
+        </div>
+        <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground space-y-3">
+          <p>
+            Group low-scoring cases into themes (e.g. &ldquo;missing empathy&rdquo;,
+            &ldquo;hallucinated policy&rdquo;) so you can see *why* the agent failed,
+            not just *that* it failed.
+          </p>
+          <Button
+            type="button"
+            onClick={() => mutation.mutate()}
+            disabled={mutation.isPending}
+          >
+            {mutation.isPending ? "Analyzing failures…" : "Find failure patterns"}
+          </Button>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="space-y-3 fade-up">
+      <p className="eyebrow">Failure patterns ({clusters.length})</p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {clusters.map((c, i) => (
+          <div
+            key={i}
+            className="rounded-lg border border-border bg-card p-5 space-y-2"
+          >
+            <p className="text-base font-medium">{c.theme}</p>
+            <p className="text-sm text-muted-foreground">{c.summary}</p>
+            <p className="font-mono text-[11px] text-muted-foreground pt-1">
+              {c.case_result_ids.length} case
+              {c.case_result_ids.length === 1 ? "" : "s"}
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
