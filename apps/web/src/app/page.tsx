@@ -12,7 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { api } from "@/lib/api";
-import type { Agent, SeedLoadResult, TestSet } from "@/lib/types";
+import type { Agent, RunListItem, SeedLoadResult, TestSet } from "@/lib/types";
 
 export default function Home() {
   const queryClient = useQueryClient();
@@ -24,6 +24,10 @@ export default function Home() {
   const agents = useQuery({
     queryKey: ["agents"],
     queryFn: () => api<Agent[]>("/api/v1/agents"),
+  });
+  const runs = useQuery({
+    queryKey: ["runs"],
+    queryFn: () => api<RunListItem[]>("/api/v1/runs"),
   });
 
   const seedMutation = useMutation({
@@ -55,7 +59,12 @@ export default function Home() {
       count: agentCount,
       ready: agents.isSuccess,
     },
-    { title: "Runs", description: "An agent scored against a test set.", count: 0, ready: true },
+    {
+      title: "Runs",
+      description: "An agent scored against a test set.",
+      count: runs.data?.length ?? 0,
+      ready: runs.isSuccess,
+    },
     { title: "Compare", description: "Two runs side by side.", count: 0, ready: true },
   ];
 

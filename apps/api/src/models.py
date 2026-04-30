@@ -107,3 +107,5 @@ class CaseResult(Base):
     judge_latency_ms: Mapped[int | None] = mapped_column(nullable=True)
     error: Mapped[str | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(TS_TZ, nullable=False, server_default=func.now())
+
+    test_case: Mapped["TestCase"] = relationship(lazy="joined")

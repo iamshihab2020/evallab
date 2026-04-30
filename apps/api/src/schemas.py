@@ -139,3 +139,95 @@ class DebugTestPromptOut(BaseModel):
     output: str
     latency_ms: int
     model_used: str
+
+
+# --- Runs ---
+
+
+class RunStart(BaseModel):
+    test_set_id: UUID
+    agent_id: UUID
+    judge_model: str = "llama-3.3-70b-versatile"
+
+
+class CaseResultRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    run_id: UUID
+    test_case_id: UUID
+    agent_prompt_sent: str | None
+    agent_output: str | None
+    agent_latency_ms: int | None
+    judge_prompt_sent: str | None
+    judge_score: int | None
+    judge_reasoning: str | None
+    judge_latency_ms: int | None
+    error: str | None
+    created_at: datetime
+
+
+class WorstCase(BaseModel):
+    case_result_id: UUID
+    test_case_id: UUID
+    input: str
+    judge_score: int
+    judge_reasoning: str | None
+
+
+class CategoryStat(BaseModel):
+    count: int
+    pass_rate: float
+    avg_score: float
+
+
+class RunStats(BaseModel):
+    total_cases: int
+    successful_cases: int
+    errored_cases: int
+    pass_rate: float
+    avg_score: float
+    score_distribution: dict[int, int]
+    per_category: dict[str, CategoryStat]
+    worst_cases: list[WorstCase]
+
+
+class RunRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    test_set_id: UUID
+    agent_id: UUID
+    judge_model: str
+    status: str
+    started_at: datetime
+    completed_at: datetime | None
+    total_cases: int
+    completed_cases: int
+    errored_cases: int
+    error: str | None
+
+
+class RunListItem(BaseModel):
+    """List shape extends SPEC with denormalized names + computed pass_rate."""
+
+    id: UUID
+    test_set_id: UUID
+    test_set_name: str
+    agent_id: UUID
+    agent_name: str
+    judge_model: str
+    status: str
+    started_at: datetime
+    completed_at: datetime | None
+    total_cases: int
+    completed_cases: int
+    errored_cases: int
+    pass_rate: float | None
+
+
+class RunDetail(RunRead):
+    test_set_name: str
+    agent_name: str
+    case_results: list[CaseResultRead]
+    stats: RunStats | None
