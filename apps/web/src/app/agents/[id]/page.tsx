@@ -17,9 +17,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { api, ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import type { Agent } from "@/lib/types";
+import type { Agent, DebugTestPromptResult } from "@/lib/types";
 
 const detailKey = (id: string) => ["agents", id];
 
@@ -112,10 +113,63 @@ export default function AgentDetailPage() {
         isSubmitting={updateMutation.isPending}
       />
 
-      <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-        Test Prompt tool ships in Phase 3.
-      </p>
+      <TestPromptTool agentId={data.id} />
     </div>
+  );
+}
+
+function TestPromptTool({ agentId }: { agentId: string }) {
+  const [input, setInput] = useState("");
+  const [result, setResult] = useState<DebugTestPromptResult | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: (text: string) =>
+      api<DebugTestPromptResult>("/api/v1/debug/test-prompt", {
+        method: "POST",
+        body: JSON.stringify({ agent_id: agentId, input: text }),
+      }),
+    onSuccess: (r) => setResult(r),
+    onError: (e) => {
+      if (e instanceof ApiError && e.status === 401) {
+        toast.error("Set NEXT_PUBLIC_API_KEY in apps/web/.env.local");
+      } else {
+        toast.error(e.message);
+      }
+    },
+  });
+
+  return (
+    <section className="space-y-3 rounded-md border p-4">
+      <div>
+        <h2 className="text-lg font-semibold">Test Prompt</h2>
+        <p className="text-xs text-muted-foreground">
+          One Groq call per click; counts toward your daily 1k-request quota.
+        </p>
+      </div>
+      <Textarea
+        rows={4}
+        placeholder="i want a refund for #12345"
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+      />
+      <Button
+        onClick={() => mutation.mutate(input)}
+        disabled={mutation.isPending || input.trim().length === 0}
+      >
+        {mutation.isPending ? "Running…" : "Run"}
+      </Button>
+      {result && (
+        <div className="space-y-2 rounded-md bg-muted p-3">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="rounded bg-background px-2 py-0.5 tabular-nums">
+              {result.latency_ms} ms
+            </span>
+            <span className="font-mono">{result.model_used}</span>
+          </div>
+          <pre className="whitespace-pre-wrap text-sm">{result.output}</pre>
+        </div>
+      )}
+    </section>
   );
 }
 

@@ -114,3 +114,28 @@ class SeedLoadResult(BaseModel):
     already_loaded: bool
     test_set_id: UUID | None = None
     agent_ids: list[UUID] = []
+
+
+# --- Debug: test-prompt ---
+
+
+class DebugTestPromptIn(BaseModel):
+    agent_id: UUID | None = None
+    system_prompt: str | None = None
+    model: str | None = None
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    max_tokens: int | None = Field(default=None, ge=1, le=8192)
+    input: str = Field(..., min_length=1)
+
+    def validate_target(self) -> None:
+        if self.agent_id is None:
+            if not (self.system_prompt and self.model):
+                raise ValueError(
+                    "Provide either agent_id, or both system_prompt and model.",
+                )
+
+
+class DebugTestPromptOut(BaseModel):
+    output: str
+    latency_ms: int
+    model_used: str

@@ -84,3 +84,11 @@ export type SeedLoadResult = {
   test_set_id: string | null;
   agent_ids: string[];
 };
+
+// --- Debug ---
+
+export type DebugTestPromptResult = {
+  output: string;
+  latency_ms: number;
+  model_used: string;
+};
