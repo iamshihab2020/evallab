@@ -29,6 +29,12 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "W"]
+# B008: FastAPI uses Depends()/Query()/File() in argument defaults by design.
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# Seed data has long natural-language strings that don't fit on one line cleanly.
+"src/seeds/*.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"

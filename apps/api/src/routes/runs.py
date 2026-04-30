@@ -1,7 +1,7 @@
 """Runs endpoints: start, list, detail, delete."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
@@ -250,6 +250,6 @@ async def heal_orphaned_runs() -> None:
         for run in rows:
             run.status = "failed"
             run.error = "Server restarted mid-run"
-            run.completed_at = datetime.now(timezone.utc)
+            run.completed_at = datetime.now(UTC)
         if rows:
             await db.commit()

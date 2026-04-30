@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-from src.models import Agent, CaseResult, Run, TestCase, TestSet
+from src.models import Agent, CaseResult, Run, TestSet
 
 from .judge import judge_response
 from .llm import call_llm
@@ -38,7 +38,7 @@ async def execute_run(run_id: UUID, db_factory: async_sessionmaker) -> None:  # 
             if test_set is None or agent is None:
                 run.status = "failed"
                 run.error = "Test set or agent not found"
-                run.completed_at = datetime.now(timezone.utc)
+                run.completed_at = datetime.now(UTC)
                 await db.commit()
                 return
 
@@ -116,7 +116,7 @@ async def execute_run(run_id: UUID, db_factory: async_sessionmaker) -> None:  # 
             run = await db.get(Run, run_id)
             if run is not None:
                 run.status = "completed"
-                run.completed_at = datetime.now(timezone.utc)
+                run.completed_at = datetime.now(UTC)
                 await db.commit()
         logger.info("run %s completed", run_id)
 
@@ -128,7 +128,7 @@ async def execute_run(run_id: UUID, db_factory: async_sessionmaker) -> None:  # 
                 if run is not None:
                     run.status = "failed"
                     run.error = f"{type(e).__name__}: {str(e)[:500]}"
-                    run.completed_at = datetime.now(timezone.utc)
+                    run.completed_at = datetime.now(UTC)
                     await db.commit()
         except Exception:
             logger.exception("failed to mark run %s as failed", run_id)

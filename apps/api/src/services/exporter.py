@@ -1,7 +1,7 @@
 """Markdown exporter for completed runs."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.schemas import CaseResultRead, RunDetail
 
@@ -15,9 +15,9 @@ def _human_dt(dt: datetime | None) -> str:
     if dt is None:
         return "n/a"
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     # e.g. "2026-04-30 13:53 UTC"
-    return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    return dt.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
 def _human_duration(start: datetime | None, end: datetime | None) -> str:
