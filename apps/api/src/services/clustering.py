@@ -11,34 +11,35 @@ from .llm import call_llm_json
 
 logger = logging.getLogger(__name__)
 
-CLUSTER_SYSTEM = """You are an expert at analyzing AI agent failures.
+CLUSTER_SYSTEM = """You are an expert at analyzing AI agent failures. Your job is to group failed cases by what the AGENT did wrong — not by what the user asked about.
 
-You will receive a list of failed cases (each with an ID, the user's input, the
-agent's output, and the judge's reasoning for the low score). Group them into
-3-5 thematic clusters by ROOT CAUSE — not by surface text similarity.
+CRITICAL: Cluster by the agent's failure mode, NOT by user topic.
+- Bad theme: "Refund inquiries" (this is a user topic — useless for fixing the agent)
+- Good theme: "Hallucinated refund amounts" (this is a failure mode — points to a fix)
 
-Examples of good cluster themes:
-- "Missing empathy in complaints"
-- "Failed to ask for order ID"
-- "Hallucinated policy details"
+INPUT: Each case includes the user's INPUT, the AGENT_OUTPUT, and the JUDGE_REASONING. The JUDGE_REASONING is your strongest signal — the judge has already identified what failed. Use it as the primary clustering basis; use input/output as supporting context.
 
-Return ONLY a JSON object of this exact shape, no other text:
+THEME GUIDELINES:
+- Short noun phrase, max 6 words. Specific beats brief.
+- Good examples (invent themes that fit the actual failures): "Missing empathy in complaints", "Failed to ask for order ID", "Hallucinated policy details"
+- Bad: "Tone issues" (too vague), "Refund inquiries" (user topic), "Agent doesn't ask for clarification" (sentence, not noun phrase)
+
+CLUSTERING RULES:
+- Aim for one cluster per ~3-5 failures, 1-5 clusters total. Fewer when failures are homogeneous.
+- Every input case_result_id must appear in exactly one cluster. Never invent IDs.
+- If a case is genuinely unique, place it in the closest-matching cluster — do not create one-off clusters.
+- Sort clusters largest-first (most case_result_ids first).
+
+Return ONLY a JSON object of this shape, no other text:
 {
   "clusters": [
     {
       "theme": "<short noun phrase, max 6 words>",
-      "summary": "<one sentence explaining the shared failure mode>",
+      "summary": "<one sentence explaining the shared failure mode AND what the agent should do instead>",
       "case_result_ids": ["<uuid>", "<uuid>", ...]
-    },
-    ...
+    }
   ]
 }
-
-Rules:
-- Every case_result_id must come from the input. Never invent IDs.
-- Every input case must appear in exactly one cluster.
-- Aim for 3-5 clusters. Fewer is fine if the failures are homogeneous.
-- If only 1-2 cases, you may return a single cluster.
 """
 
 
