@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
 import { Nav } from "@/components/nav";
+import { QueryProvider } from "@/components/query-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WakeUpBanner } from "@/components/wake-up-banner";
@@ -34,12 +35,14 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        <TooltipProvider>
-          <WakeUpBanner />
-          <Nav />
-          <main className="container mx-auto flex-1 px-4 py-8">{children}</main>
-          <Toaster />
-        </TooltipProvider>
+        <QueryProvider>
+          <TooltipProvider>
+            <WakeUpBanner />
+            <Nav />
+            <main className="container mx-auto flex-1 px-4 py-8">{children}</main>
+            <Toaster />
+          </TooltipProvider>
+        </QueryProvider>
       </body>
     </html>
   );

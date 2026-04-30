@@ -18,7 +18,10 @@ export async function api<T = unknown>(
 ): Promise<T> {
   const url = `${BASE_URL}${path}`;
   const headers = new Headers(init.headers);
-  if (!headers.has("Content-Type") && init.body) {
+  // Don't force JSON Content-Type for FormData uploads — fetch sets the
+  // correct multipart boundary itself.
+  const isFormData = init.body instanceof FormData;
+  if (!headers.has("Content-Type") && init.body && !isFormData) {
     headers.set("Content-Type", "application/json");
   }
   if (API_KEY) {
