@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from src.db import AsyncSessionLocal, get_db
 from src.deps import verify_api_key
-from src.models import Agent, CaseResult, CompareInsight, Run, TestSet
+from src.models import Agent, AgentVersion, CaseResult, CompareInsight, Run, TestSet
 from src.schemas import (
     CaseResultRead,
     CompareInsightContent,
@@ -48,9 +48,25 @@ async def start_run(
     if agent is None:
         raise HTTPException(404, "Agent not found")
 
+    # Resolve which version this run pins to. Default = latest version of the agent.
+    if body.agent_version_id is not None:
+        version = await db.get(AgentVersion, body.agent_version_id)
+        if version is None or version.agent_id != body.agent_id:
+            raise HTTPException(400, "agent_version_id does not belong to this agent")
+    else:
+        version = await db.scalar(
+            select(AgentVersion)
+            .where(AgentVersion.agent_id == body.agent_id)
+            .order_by(AgentVersion.version.desc())
+            .limit(1),
+        )
+        if version is None:
+            raise HTTPException(500, "Agent has no versions; data is inconsistent.")
+
     run = Run(
         test_set_id=body.test_set_id,
         agent_id=body.agent_id,
+        agent_version_id=version.id,
         judge_model=body.judge_model,
         status="pending",
     )
@@ -60,7 +76,21 @@ async def start_run(
 
     background.add_task(execute_run, run.id, AsyncSessionLocal)
 
-    return RunRead.model_validate(run)
+    return RunRead(
+        id=run.id,
+        test_set_id=run.test_set_id,
+        agent_id=run.agent_id,
+        agent_version_id=run.agent_version_id,
+        agent_version=version.version,
+        judge_model=run.judge_model,
+        status=run.status,
+        started_at=run.started_at,
+        completed_at=run.completed_at,
+        total_cases=run.total_cases,
+        completed_cases=run.completed_cases,
+        errored_cases=run.errored_cases,
+        error=run.error,
+    )
 
 
 @router.get("", response_model=list[RunListItem])
@@ -70,9 +100,10 @@ async def list_runs(
     agent_id: UUID | None = None,
 ) -> list[RunListItem]:
     stmt = (
-        select(Run, TestSet.name, Agent.name)
+        select(Run, TestSet.name, Agent.name, AgentVersion.version)
         .join(TestSet, TestSet.id == Run.test_set_id)
         .join(Agent, Agent.id == Run.agent_id)
+        .join(AgentVersion, AgentVersion.id == Run.agent_version_id, isouter=True)
         .order_by(Run.started_at.desc())
     )
     if test_set_id is not None:
@@ -108,6 +139,7 @@ async def list_runs(
             test_set_name=r[1],
             agent_id=r.Run.agent_id,
             agent_name=r[2],
+            agent_version=r[3],
             judge_model=r.Run.judge_model,
             status=r.Run.status,
             started_at=r.Run.started_at,
@@ -127,6 +159,11 @@ async def _build_run_detail(run_id: UUID, db: AsyncSession) -> RunDetail:
         raise HTTPException(404, "Run not found")
     test_set = await db.get(TestSet, run.test_set_id)
     agent = await db.get(Agent, run.agent_id)
+    version = (
+        await db.get(AgentVersion, run.agent_version_id)
+        if run.agent_version_id is not None
+        else None
+    )
 
     cr_stmt = (
         select(CaseResult)
@@ -145,6 +182,8 @@ async def _build_run_detail(run_id: UUID, db: AsyncSession) -> RunDetail:
         id=run.id,
         test_set_id=run.test_set_id,
         agent_id=run.agent_id,
+        agent_version_id=run.agent_version_id,
+        agent_version=version.version if version else None,
         judge_model=run.judge_model,
         status=run.status,
         started_at=run.started_at,
@@ -302,6 +341,22 @@ async def explain_compare(
     agent_b = await db.get(Agent, run_b.agent_id)
     if agent_a is None or agent_b is None:
         raise HTTPException(404, "Agent for one or both runs not found")
+
+    # Use the pinned versions' prompts so the explanation matches what actually
+    # ran, even if the live agents have since been edited. Expunge the agents
+    # from the session before mutating so SQLAlchemy doesn't UPDATE them on
+    # commit.
+    db.expunge(agent_a)
+    db.expunge(agent_b)
+    for agent_obj, run_obj in ((agent_a, run_a), (agent_b, run_b)):
+        if run_obj.agent_version_id is None:
+            continue
+        version = await db.get(AgentVersion, run_obj.agent_version_id)
+        if version is not None:
+            agent_obj.system_prompt = version.system_prompt
+            agent_obj.model = version.model
+            agent_obj.temperature = version.temperature
+            agent_obj.max_tokens = version.max_tokens
 
     cr_stmt = (
         select(CaseResult)

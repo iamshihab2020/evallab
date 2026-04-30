@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
-import type { Agent, Run, RunStartInput, TestSet } from "@/lib/types";
+import type { Agent, AgentVersion, Run, RunStartInput, TestSet } from "@/lib/types";
 
 const JUDGE_MODELS = ["llama-3.3-70b-versatile"];
 
@@ -36,7 +36,14 @@ export default function NewRunPage() {
 
   const [testSetId, setTestSetId] = useState<string | undefined>();
   const [agentId, setAgentId] = useState<string | undefined>();
+  const [agentVersionId, setAgentVersionId] = useState<string | undefined>();
   const [judgeModel, setJudgeModel] = useState(JUDGE_MODELS[0]);
+
+  const versions = useQuery({
+    queryKey: ["agents", agentId, "versions"],
+    queryFn: () => api<AgentVersion[]>(`/api/v1/agents/${agentId}/versions`),
+    enabled: !!agentId,
+  });
 
   const mutation = useMutation({
     mutationFn: (body: RunStartInput) =>
@@ -113,7 +120,13 @@ export default function NewRunPage() {
 
             <div className="space-y-2">
               <Label>Agent</Label>
-              <Select value={agentId} onValueChange={setAgentId}>
+              <Select
+                value={agentId}
+                onValueChange={(v) => {
+                  setAgentId(v);
+                  setAgentVersionId(undefined); // reset; default to latest
+                }}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Pick an agent" />
                 </SelectTrigger>
@@ -126,6 +139,34 @@ export default function NewRunPage() {
                   ))}
                 </SelectContent>
               </Select>
+              {agentId && (versions.data?.length ?? 0) > 1 && (
+                <div className="space-y-1 pt-2">
+                  <Label className="text-xs text-muted-foreground">
+                    Prompt version (defaults to latest)
+                  </Label>
+                  <Select
+                    value={agentVersionId ?? "__latest__"}
+                    onValueChange={(v) =>
+                      setAgentVersionId(v === "__latest__" ? undefined : v)
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__latest__">
+                        Latest (v{versions.data?.[0]?.version ?? "?"})
+                      </SelectItem>
+                      {(versions.data ?? []).map((v) => (
+                        <SelectItem key={v.id} value={v.id}>
+                          v{v.version} ·{" "}
+                          {new Date(v.created_at).toLocaleDateString()}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               {(agents.data ?? []).length === 0 && (
                 <p className="text-xs text-muted-foreground">
                   No agents yet.{" "}
@@ -167,6 +208,7 @@ export default function NewRunPage() {
                 mutation.mutate({
                   test_set_id: testSetId!,
                   agent_id: agentId!,
+                  agent_version_id: agentVersionId ?? null,
                   judge_model: judgeModel,
                 })
               }

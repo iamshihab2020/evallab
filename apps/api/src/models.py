@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Index, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -66,6 +66,39 @@ class Agent(Base):
         TS_TZ, nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
+    versions: Mapped[list["AgentVersion"]] = relationship(
+        back_populates="agent",
+        cascade="all, delete-orphan",
+        order_by="AgentVersion.version",
+        lazy="selectin",
+    )
+
+
+class AgentVersion(Base):
+    """Immutable snapshot of an agent's prompt-shaping fields. Runs pin to a version
+    so historical runs always reference the prompt that produced them."""
+
+    __tablename__ = "agent_versions"
+    __table_args__ = (
+        UniqueConstraint("agent_id", "version", name="uq_agent_versions_agent_version"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    agent_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("agents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    version: Mapped[int] = mapped_column(nullable=False)
+    system_prompt: Mapped[str] = mapped_column(nullable=False)
+    model: Mapped[str] = mapped_column(nullable=False)
+    temperature: Mapped[float] = mapped_column(nullable=False)
+    max_tokens: Mapped[int] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TS_TZ, nullable=False, server_default=func.now())
+
+    agent: Mapped["Agent"] = relationship(back_populates="versions")
+
 
 class Run(Base):
     __tablename__ = "runs"
@@ -76,6 +109,11 @@ class Run(Base):
     )
     agent_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("agents.id"), nullable=False, index=True
+    )
+    agent_version_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("agent_versions.id", ondelete="SET NULL"),
+        nullable=True,
     )
     judge_model: Mapped[str] = mapped_column(nullable=False, default="llama-3.3-70b-versatile")
     status: Mapped[str] = mapped_column(nullable=False, default="pending")
@@ -131,3 +169,32 @@ class CaseResult(Base):
     created_at: Mapped[datetime] = mapped_column(TS_TZ, nullable=False, server_default=func.now())
 
     test_case: Mapped["TestCase"] = relationship(lazy="joined")
+    human_score: Mapped["HumanScore | None"] = relationship(
+        back_populates="case_result",
+        cascade="all, delete-orphan",
+        uselist=False,
+        lazy="selectin",
+    )
+
+
+class HumanScore(Base):
+    """Human-supplied score for a case_result, used to calibrate the LLM judge."""
+
+    __tablename__ = "human_scores"
+    __table_args__ = (CheckConstraint("score >= 1 AND score <= 5", name="ck_human_scores_range"),)
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    case_result_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("case_results.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    score: Mapped[int] = mapped_column(nullable=False)
+    note: Mapped[str | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(TS_TZ, nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        TS_TZ, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    case_result: Mapped["CaseResult"] = relationship(back_populates="human_score")

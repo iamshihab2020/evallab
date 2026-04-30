@@ -92,22 +92,29 @@ export default function RunDetailPage() {
           </span>
         }
         action={
-          <Button
-            variant="mono"
-            disabled={data.status !== "completed"}
-            onClick={async () => {
-              try {
-                await downloadFile(
-                  `/api/v1/runs/${data.id}/export?format=md`,
-                  `evallab-run-${data.id}.md`,
-                );
-              } catch (e) {
-                toast.error(e instanceof Error ? e.message : "Download failed");
-              }
-            }}
-          >
-            ↓ Download Markdown
-          </Button>
+          <div className="flex items-center gap-2">
+            {data.status === "completed" && (
+              <Button asChild variant="outline">
+                <Link href={`/runs/${data.id}/calibrate`}>Calibrate judge</Link>
+              </Button>
+            )}
+            <Button
+              variant="mono"
+              disabled={data.status !== "completed"}
+              onClick={async () => {
+                try {
+                  await downloadFile(
+                    `/api/v1/runs/${data.id}/export?format=md`,
+                    `evallab-run-${data.id}.md`,
+                  );
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Download failed");
+                }
+              }}
+            >
+              ↓ Download Markdown
+            </Button>
+          </div>
         }
       />
 
@@ -119,9 +126,16 @@ export default function RunDetailPage() {
           </Link>
         } />
         <MetaItem label="Agent" value={
-          <Link href={`/agents/${data.agent_id}`} className="lime-underline">
-            {data.agent_name}
-          </Link>
+          <span className="inline-flex items-baseline gap-2">
+            <Link href={`/agents/${data.agent_id}`} className="lime-underline">
+              {data.agent_name}
+            </Link>
+            {data.agent_version != null && (
+              <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0">
+                v{data.agent_version}
+              </Badge>
+            )}
+          </span>
         } />
         <MetaItem label="Judge" value={<span className="font-mono">{data.judge_model}</span>} />
         <MetaItem label="Started" value={<span className="font-mono">{formatDateTime(data.started_at)}</span>} />

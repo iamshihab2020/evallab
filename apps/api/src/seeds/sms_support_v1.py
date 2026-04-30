@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db import AsyncSessionLocal
-from src.models import Agent, TestCase, TestSet
+from src.models import Agent, AgentVersion, TestCase, TestSet
 from src.schemas import SeedLoadResult
 
 SEED_TEST_SET_NAME = "SMS Customer Support v1"
@@ -354,6 +354,16 @@ async def seed_sms_support_v1(db: AsyncSession) -> SeedLoadResult:
         agent = Agent(**agent_data)
         db.add(agent)
         await db.flush()
+        db.add(
+            AgentVersion(
+                agent_id=agent.id,
+                version=1,
+                system_prompt=agent.system_prompt,
+                model=agent.model,
+                temperature=agent.temperature,
+                max_tokens=agent.max_tokens,
+            ),
+        )
         agent_ids.append(agent.id)
 
     await db.commit()

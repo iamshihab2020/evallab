@@ -91,6 +91,20 @@ class AgentRead(AgentBase):
     id: UUID
     created_at: datetime
     updated_at: datetime
+    current_version: int = 1
+
+
+class AgentVersionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    agent_id: UUID
+    version: int
+    system_prompt: str
+    model: str
+    temperature: float
+    max_tokens: int
+    created_at: datetime
 
 
 # --- CSV bulk upload ---
@@ -146,7 +160,24 @@ class DebugTestPromptOut(BaseModel):
 class RunStart(BaseModel):
     test_set_id: UUID
     agent_id: UUID
+    agent_version_id: UUID | None = None
     judge_model: str = "llama-3.3-70b-versatile"
+
+
+class HumanScoreUpsert(BaseModel):
+    score: int = Field(..., ge=1, le=5)
+    note: str | None = None
+
+
+class HumanScoreRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    case_result_id: UUID
+    score: int
+    note: str | None
+    created_at: datetime
+    updated_at: datetime
 
 
 class CaseResultRead(BaseModel):
@@ -164,6 +195,7 @@ class CaseResultRead(BaseModel):
     judge_latency_ms: int | None
     error: str | None
     created_at: datetime
+    human_score: HumanScoreRead | None = None
 
 
 class WorstCase(BaseModel):
@@ -197,6 +229,8 @@ class RunRead(BaseModel):
     id: UUID
     test_set_id: UUID
     agent_id: UUID
+    agent_version_id: UUID | None = None
+    agent_version: int | None = None
     judge_model: str
     status: str
     started_at: datetime
@@ -215,6 +249,7 @@ class RunListItem(BaseModel):
     test_set_name: str
     agent_id: UUID
     agent_name: str
+    agent_version: int | None = None
     judge_model: str
     status: str
     started_at: datetime
@@ -243,6 +278,24 @@ class CompareInsightContent(BaseModel):
     summary: str
     improved_themes: list[str]
     regressed_themes: list[str]
+
+
+class CalibrationItem(BaseModel):
+    case_result_id: UUID
+    judge_score: int
+    human_score: int
+    agree: bool
+
+
+class RunCalibration(BaseModel):
+    """Judge-vs-human agreement metrics for a single run."""
+
+    total_cases: int
+    scored_cases: int
+    percent_agreement: float
+    cohens_kappa: float | None
+    confusion_matrix: dict[int, dict[int, int]]
+    items: list[CalibrationItem]
 
 
 class RunCompare(BaseModel):

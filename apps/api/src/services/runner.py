@@ -10,7 +10,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-from src.models import Agent, CaseResult, Run, TestSet
+from src.models import Agent, AgentVersion, CaseResult, Run, TestSet
 
 from .judge import judge_response
 from .llm import call_llm
@@ -35,9 +35,17 @@ async def execute_run(run_id: UUID, db_factory: async_sessionmaker) -> None:  # 
                 .options(selectinload(TestSet.cases)),
             )
             agent = await db.get(Agent, run.agent_id)
-            if test_set is None or agent is None:
+            # Read prompt-shaping fields from the pinned version, not the live
+            # agent. This is the whole point of versioning: a run's prompt is
+            # immutable even if the agent is later edited.
+            version = (
+                await db.get(AgentVersion, run.agent_version_id)
+                if run.agent_version_id is not None
+                else None
+            )
+            if test_set is None or agent is None or version is None:
                 run.status = "failed"
-                run.error = "Test set or agent not found"
+                run.error = "Test set, agent, or pinned agent version not found"
                 run.completed_at = datetime.now(UTC)
                 await db.commit()
                 return
@@ -48,10 +56,10 @@ async def execute_run(run_id: UUID, db_factory: async_sessionmaker) -> None:  # 
             await db.commit()
 
             judge_model = run.judge_model
-            agent_system = agent.system_prompt
-            agent_model = agent.model
-            agent_temp = agent.temperature
-            agent_max_tokens = agent.max_tokens
+            agent_system = version.system_prompt
+            agent_model = version.model
+            agent_temp = version.temperature
+            agent_max_tokens = version.max_tokens
             case_payloads = [
                 (c.id, c.input, c.expected_behavior) for c in cases
             ]

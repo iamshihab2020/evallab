@@ -58,6 +58,18 @@ export type Agent = {
   max_tokens: number;
   created_at: string;
   updated_at: string;
+  current_version: number;
+};
+
+export type AgentVersion = {
+  id: string;
+  agent_id: string;
+  version: number;
+  system_prompt: string;
+  model: string;
+  temperature: number;
+  max_tokens: number;
+  created_at: string;
 };
 
 export type AgentCreateInput = {
@@ -101,6 +113,8 @@ export type Run = {
   id: string;
   test_set_id: string;
   agent_id: string;
+  agent_version_id: string | null;
+  agent_version: number | null;
   judge_model: string;
   status: RunStatus;
   started_at: string;
@@ -117,6 +131,15 @@ export type RunListItem = Run & {
   pass_rate: number | null;
 };
 
+export type HumanScore = {
+  id: string;
+  case_result_id: string;
+  score: number;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type CaseResult = {
   id: string;
   run_id: string;
@@ -130,6 +153,23 @@ export type CaseResult = {
   judge_latency_ms: number | null;
   error: string | null;
   created_at: string;
+  human_score: HumanScore | null;
+};
+
+export type CalibrationItem = {
+  case_result_id: string;
+  judge_score: number;
+  human_score: number;
+  agree: boolean;
+};
+
+export type RunCalibration = {
+  total_cases: number;
+  scored_cases: number;
+  percent_agreement: number;
+  cohens_kappa: number | null;
+  confusion_matrix: Record<string, Record<string, number>>;
+  items: CalibrationItem[];
 };
 
 export type WorstCase = {
@@ -180,6 +220,7 @@ export type CompareInsight = {
 export type RunStartInput = {
   test_set_id: string;
   agent_id: string;
+  agent_version_id?: string | null;
   judge_model?: string;
 };
 

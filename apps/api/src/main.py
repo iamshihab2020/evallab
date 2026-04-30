@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import settings
-from src.routes import agents, debug, health, runs, seeds, test_cases, test_sets
+from src.routes import agents, calibration, debug, health, runs, seeds, test_cases, test_sets
 from src.routes.runs import heal_orphaned_runs
 
 
@@ -32,3 +32,4 @@ app.include_router(agents.router, prefix="/api/v1")
 app.include_router(seeds.router, prefix="/api/v1")
 app.include_router(debug.router, prefix="/api/v1")
 app.include_router(runs.router, prefix="/api/v1")
+app.include_router(calibration.router, prefix="/api/v1")

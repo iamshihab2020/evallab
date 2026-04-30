@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowRight, Loader2, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -249,6 +250,11 @@ function CompareView({ data }: { data: RunCompare }) {
         </p>
       </div>
 
+      <SameAgentVersionBanner
+        runA={data.run_a}
+        runB={data.run_b}
+      />
+
       <DiffExplainer aId={data.run_a.id} bId={data.run_b.id} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -359,6 +365,41 @@ function CompareView({ data }: { data: RunCompare }) {
   );
 }
 
+function SameAgentVersionBanner({
+  runA,
+  runB,
+}: {
+  runA: RunCompare["run_a"];
+  runB: RunCompare["run_b"];
+}) {
+  if (
+    runA.agent_id !== runB.agent_id ||
+    runA.agent_version == null ||
+    runB.agent_version == null ||
+    runA.agent_version === runB.agent_version
+  ) {
+    return null;
+  }
+  const va = runA.agent_version;
+  const vb = runB.agent_version;
+  return (
+    <div className="rounded-lg border border-foreground/20 bg-foreground/[0.04] p-4 text-sm">
+      <p>
+        <span className="font-medium">Same agent, different prompt versions.</span>{" "}
+        Run A ran <span className="font-mono">v{va}</span>, Run B ran{" "}
+        <span className="font-mono">v{vb}</span> of{" "}
+        <Link
+          href={`/agents/${runA.agent_id}`}
+          className="lime-underline"
+        >
+          {runA.agent_name}
+        </Link>
+        . This is the eval-driven prompt-iteration loop.
+      </p>
+    </div>
+  );
+}
+
 function RunStatsCard({
   label,
   run,
@@ -371,7 +412,12 @@ function RunStatsCard({
     <div className="rounded-md border p-4 space-y-2">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold">{label}</h3>
-        <span className="text-sm text-muted-foreground">{run.agent_name}</span>
+        <span className="text-sm text-muted-foreground">
+          {run.agent_name}
+          {run.agent_version != null && (
+            <span className="ml-2 font-mono text-xs">v{run.agent_version}</span>
+          )}
+        </span>
       </div>
       {s && (
         <>
