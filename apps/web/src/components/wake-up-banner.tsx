@@ -47,22 +47,25 @@ export function WakeUpBanner() {
 
   if (state === "pending" || state === "ok") return null;
 
+  const isFail = state === "failed";
   return (
-    <div className="fixed inset-x-0 top-0 z-50 border-b bg-amber-50 text-amber-900 shadow-sm dark:bg-amber-900/30 dark:text-amber-50">
-      <div className="container mx-auto flex items-center gap-3 px-4 py-2 text-sm">
+    <div
+      className={`fixed inset-x-0 top-0 z-50 border-b ${
+        isFail
+          ? "border-destructive/40 bg-destructive/[0.08] text-destructive"
+          : "border-border bg-secondary text-foreground"
+      }`}
+    >
+      <div className="container mx-auto flex items-center gap-3 px-6 py-2 text-xs">
         {state === "slow" ? (
-          <>
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-            <p>
-              Waking up backend (Render free tier sleeps after 15 min idle). This usually takes 30
-              to 60 seconds. Hang tight!
-            </p>
-          </>
-        ) : (
-          <p>
-            Backend isn&apos;t responding. The free tier may be over its daily quota — try again
-            later.
+          <p className="flex items-center gap-2">
+            <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+            <span className="text-muted-foreground">
+              Waking the API… Render free tier wakes from idle in 30–60s.
+            </span>
           </p>
+        ) : (
+          <p>Backend isn&apos;t responding. Free tier daily quota may be exhausted.</p>
         )}
       </div>
     </div>

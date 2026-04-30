@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
+import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -58,65 +59,143 @@ export default function ComparePage() {
     retry: false,
   });
 
+  const noRuns = !runsQuery.isLoading && completed.length < 2;
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Compare runs</h1>
-        <p className="text-sm text-muted-foreground">
-          Pick two completed runs against the same test set.
-        </p>
-      </div>
+    <div>
+      <PageHeader
+        title="Compare runs"
+        blurb="Pick two completed runs against the same test set. See what improved, regressed, and stayed the same."
+      />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label>Run A</Label>
-          <Select
-            value={aId}
-            onValueChange={(v) => {
-              setAId(v);
-              setBId(undefined);
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Pick run A" />
-            </SelectTrigger>
-            <SelectContent>
-              {completed.map((r) => (
-                <SelectItem key={r.id} value={r.id}>
-                  {r.test_set_name} · {r.agent_name} · {formatDateTime(r.started_at)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <div className="space-y-8">
+        <div className="rounded-lg border border-border bg-card p-6 fade-up">
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-4 items-end">
+            <div className="space-y-2">
+              <Label>Run A (baseline)</Label>
+              <Select
+                value={aId}
+                onValueChange={(v) => {
+                  setAId(v);
+                  setBId(undefined);
+                }}
+                disabled={completed.length === 0}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue
+                    placeholder={completed.length === 0 ? "No completed runs" : "Pick run A"}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {completed.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.test_set_name} · {r.agent_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="hidden sm:flex h-9 items-center justify-center text-muted-foreground font-mono text-xs">
+              vs
+            </div>
+            <div className="space-y-2">
+              <Label>Run B (variant)</Label>
+              <Select value={bId} onValueChange={setBId} disabled={!aId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={aId ? "Pick run B" : "Pick run A first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {bOptions.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.test_set_name} · {r.agent_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Both runs must be completed and use the same test set.
+          </p>
         </div>
-        <div className="space-y-2">
-          <Label>Run B</Label>
-          <Select value={bId} onValueChange={setBId} disabled={!aId}>
-            <SelectTrigger>
-              <SelectValue
-                placeholder={aId ? "Pick run B" : "Pick run A first"}
-              />
-            </SelectTrigger>
-            <SelectContent>
-              {bOptions.map((r) => (
-                <SelectItem key={r.id} value={r.id}>
-                  {r.test_set_name} · {r.agent_name} · {formatDateTime(r.started_at)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+
+        {compareQuery.error && (
+          <p className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+            {compareQuery.error instanceof ApiError && compareQuery.error.body
+              ? compareQuery.error.body
+              : compareQuery.error.message}
+          </p>
+        )}
+
+        {!compareQuery.data && !compareQuery.error && noRuns && (
+          <CompareEmptyState completedCount={completed.length} />
+        )}
+
+        {!compareQuery.data && !compareQuery.error && !noRuns && (
+          <CompareHowItWorks />
+        )}
+
+        {compareQuery.data && <CompareView data={compareQuery.data} />}
       </div>
+    </div>
+  );
+}
 
-      {compareQuery.error && (
-        <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-          {compareQuery.error instanceof ApiError && compareQuery.error.body
-            ? compareQuery.error.body
-            : compareQuery.error.message}
-        </p>
-      )}
+function CompareEmptyState({ completedCount }: { completedCount: number }) {
+  return (
+    <div className="rounded-lg border border-dashed border-border p-10 text-center fade-up space-y-3">
+      <p className="eyebrow">Need at least two completed runs</p>
+      <p className="text-sm text-muted-foreground max-w-md mx-auto">
+        You currently have {completedCount} completed run
+        {completedCount === 1 ? "" : "s"}. Run the same test set against two
+        agents to see a comparison here.
+      </p>
+      <div className="pt-2">
+        <a
+          href="/runs/new"
+          className="inline-flex h-9 items-center px-3.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+        >
+          Start a run →
+        </a>
+      </div>
+    </div>
+  );
+}
 
-      {compareQuery.data && <CompareView data={compareQuery.data} />}
+function CompareHowItWorks() {
+  return (
+    <div className="rounded-lg border border-border bg-card/40 p-6 fade-up">
+      <p className="eyebrow mb-4">How comparison works</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+        {[
+          {
+            label: "Improved",
+            desc: "B's score is higher than A's on the same case.",
+            tag: "Δ +",
+            tone: "text-foreground",
+          },
+          {
+            label: "Regressed",
+            desc: "B's score is lower than A's on the same case.",
+            tag: "Δ −",
+            tone: "text-destructive",
+          },
+          {
+            label: "Unchanged",
+            desc: "Both runs scored the case the same.",
+            tag: "Δ 0",
+            tone: "text-muted-foreground",
+          },
+        ].map((b) => (
+          <div key={b.label} className="space-y-1">
+            <div className="flex items-baseline gap-2">
+              <span className={`font-mono text-xs ${b.tone}`}>{b.tag}</span>
+              <span className="text-sm font-medium">{b.label}</span>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">{b.desc}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -128,7 +207,7 @@ function CompareView({ data }: { data: RunCompare }) {
   const pa = data.run_a.stats?.pass_rate ?? 0;
   const pb = data.run_b.stats?.pass_rate ?? 0;
   const delta = data.pass_rate_delta;
-  const deltaColor = delta > 0 ? "text-green-600" : delta < 0 ? "text-red-600" : "";
+  const deltaColor = delta > 0 ? "text-foreground" : delta < 0 ? "text-destructive" : "text-muted-foreground";
 
   const aBy = new Map(data.run_a.case_results.map((c) => [c.test_case_id, c]));
   const bBy = new Map(data.run_b.case_results.map((c) => [c.test_case_id, c]));
@@ -147,15 +226,19 @@ function CompareView({ data }: { data: RunCompare }) {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-md border p-4 text-lg">
-        <span className="font-semibold">Run A:</span> {(pa * 100).toFixed(0)}%{" "}
-        <span className="mx-2 text-muted-foreground">·</span>
-        <span className="font-semibold">Run B:</span> {(pb * 100).toFixed(0)}%{" "}
-        <span className="mx-2 text-muted-foreground">·</span>
-        <span className={`font-semibold ${deltaColor}`}>
-          Δ {delta > 0 ? "+" : ""}
-          {(delta * 100).toFixed(0)}%
-        </span>
+      <div className="rounded-lg border border-border bg-card p-6 fade-up">
+        <p className="eyebrow">Pass-rate delta</p>
+        <p className="mt-3 text-3xl sm:text-4xl font-light tracking-tight tabular-nums">
+          <span className="text-muted-foreground text-base mr-2">A</span>
+          {(pa * 100).toFixed(0)}%
+          <span className="mx-3 text-muted-foreground/40">·</span>
+          <span className="text-muted-foreground text-base mr-2">B</span>
+          {(pb * 100).toFixed(0)}%
+          <span className="mx-3 text-muted-foreground/40">·</span>
+          <span className={deltaColor}>
+            Δ {delta > 0 ? "+" : ""}{(delta * 100).toFixed(0)}%
+          </span>
+        </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -209,9 +292,9 @@ function CompareView({ data }: { data: RunCompare }) {
               const bg = r.errored
                 ? ""
                 : r.delta > 0
-                ? "bg-green-50 dark:bg-green-950/30"
+                ? "bg-secondary/40"
                 : r.delta < 0
-                ? "bg-red-50 dark:bg-red-950/30"
+                ? "bg-destructive/[0.06]"
                 : "";
               return (
                 <TableRow

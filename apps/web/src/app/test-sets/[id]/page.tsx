@@ -9,6 +9,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -75,28 +76,20 @@ export default function TestSetDetailPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <Link
-          href="/test-sets"
-          className="text-sm text-muted-foreground hover:underline"
-        >
-          ← Test sets
-        </Link>
-
-        <div className="mt-2 flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight">{data.name}</h1>
-            {data.description && (
-              <p className="text-muted-foreground">{data.description}</p>
-            )}
-            <p className="text-sm text-muted-foreground">
-              {data.case_count} case{data.case_count === 1 ? "" : "s"} ·
-              {" "}created {formatDateTime(data.created_at)} ·
-              {" "}edited {formatDateTime(data.updated_at)}
-            </p>
-          </div>
-
+    <div>
+      <PageHeader
+        eyebrow={
+          <>
+            <Link href="/test-sets" className="hover:text-foreground transition-colors">
+              Test sets
+            </Link>
+            <span className="mx-1.5 opacity-40">/</span>
+            <span>{data.case_count} cases</span>
+          </>
+        }
+        title={data.name}
+        blurb={data.description ?? `Created ${formatDateTime(data.created_at)} · edited ${formatDateTime(data.updated_at)}`}
+        action={
           <div className="flex shrink-0 gap-2">
             <EditTestSetDialog testSet={data} />
             <DeleteTestSetDialog
@@ -104,43 +97,149 @@ export default function TestSetDetailPage() {
               onConfirm={() => deleteSet.mutate()}
             />
           </div>
+        }
+      />
+      <div className="space-y-6">
+      <CasesView testSetId={id} testSetName={data.name} cases={data.cases} />
+      </div>
+    </div>
+  );
+}
+
+// --- Cases view (table + raw CSV toggle + download) ---
+
+function csvEscape(value: string | null | undefined): string {
+  const s = value ?? "";
+  if (/["\n,]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function casesToCsv(cases: TestCase[]): string {
+  const header = "input,category,expected_behavior";
+  const rows = cases.map(
+    (c) =>
+      `${csvEscape(c.input)},${csvEscape(c.category)},${csvEscape(c.expected_behavior)}`,
+  );
+  return [header, ...rows].join("\n");
+}
+
+function CasesView({
+  testSetId,
+  testSetName,
+  cases,
+}: {
+  testSetId: string;
+  testSetName: string;
+  cases: TestCase[];
+}) {
+  const [view, setView] = useState<"table" | "csv">("table");
+
+  function downloadCsv() {
+    const csv = casesToCsv(cases);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const slug = testSetName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    a.download = `${slug || "test-set"}-cases.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  const csvText = casesToCsv(cases);
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <p className="eyebrow-muted">Cases</p>
+          <div className="inline-flex border border-border/60 overflow-hidden text-[10px] font-mono uppercase tracking-widest">
+            <button
+              type="button"
+              onClick={() => setView("table")}
+              className={`px-3 py-1 transition-colors ${
+                view === "table"
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Table
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("csv")}
+              className={`px-3 py-1 transition-colors border-l border-border/60 ${
+                view === "csv"
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              CSV
+            </button>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <AddCaseDialog testSetId={testSetId} />
+          <UploadCsvDialog testSetId={testSetId} />
+          <Button
+            variant="mono"
+            size="sm"
+            onClick={downloadCsv}
+            disabled={cases.length === 0}
+          >
+            ↓ Download CSV
+          </Button>
         </div>
       </div>
 
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Cases</h2>
-          <div className="flex gap-2">
-            <AddCaseDialog testSetId={id} />
-            <UploadCsvDialog testSetId={id} />
-          </div>
+      {cases.length === 0 ? (
+        <div className="border border-dashed border-border/60 p-8 text-center text-sm text-muted-foreground">
+          No cases yet. Add one or upload a CSV.
         </div>
-
-        {data.cases.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-            No cases yet. Add one or upload a CSV.
+      ) : view === "csv" ? (
+        <div className="border border-border/60 bg-card/40">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-border/60 bg-card">
+            <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              {cases.length} rows · UTF-8 · 3 columns
+            </span>
+            <button
+              type="button"
+              onClick={() => navigator.clipboard.writeText(csvText)}
+              className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground"
+            >
+              Copy
+            </button>
           </div>
-        ) : (
+          <pre className="overflow-auto p-4 text-xs font-mono leading-relaxed max-h-[600px] whitespace-pre">
+            {csvText}
+          </pre>
+        </div>
+      ) : (
+        <div className="border border-border/60">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-12">#</TableHead>
-                <TableHead>Input</TableHead>
-                <TableHead className="w-32">Category</TableHead>
-                <TableHead>Expected behavior</TableHead>
-                <TableHead className="w-28 text-right">Actions</TableHead>
+                <TableHead className="w-12 font-mono text-[10px] uppercase tracking-widest">#</TableHead>
+                <TableHead className="font-mono text-[10px] uppercase tracking-widest">Input</TableHead>
+                <TableHead className="w-32 font-mono text-[10px] uppercase tracking-widest">Category</TableHead>
+                <TableHead className="font-mono text-[10px] uppercase tracking-widest">Expected behavior</TableHead>
+                <TableHead className="w-28 text-right font-mono text-[10px] uppercase tracking-widest">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.cases.map((c) => (
+              {cases.map((c) => (
                 <TableRow key={c.id}>
-                  <TableCell className="text-muted-foreground tabular-nums">
+                  <TableCell className="text-muted-foreground font-mono tabular-nums">
                     {c.position}
                   </TableCell>
                   <TableCell className="max-w-md whitespace-pre-wrap">
                     {c.input}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="text-muted-foreground font-mono text-xs">
                     {c.category ?? "—"}
                   </TableCell>
                   <TableCell className="max-w-md whitespace-pre-wrap text-muted-foreground">
@@ -148,17 +247,17 @@ export default function TestSetDetailPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-2">
-                      <EditCaseDialog testSetId={id} testCase={c} />
-                      <DeleteCaseButton testSetId={id} testCase={c} />
+                      <EditCaseDialog testSetId={testSetId} testCase={c} />
+                      <DeleteCaseButton testSetId={testSetId} testCase={c} />
                     </div>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-        )}
-      </section>
-    </div>
+        </div>
+      )}
+    </section>
   );
 }
 

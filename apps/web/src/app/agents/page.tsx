@@ -1,88 +1,102 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
+import { EmptyState } from "@/components/empty-state";
+import { PageHeader } from "@/components/page-header";
+import { StatStrip } from "@/components/stat-strip";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { Agent } from "@/lib/types";
 
 export default function AgentsPage() {
+  const router = useRouter();
   const { data, isLoading, error } = useQuery({
     queryKey: ["agents"],
     queryFn: () => api<Agent[]>("/api/v1/agents"),
   });
 
+  const uniqueModels = new Set((data ?? []).map((a) => a.model)).size;
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-end justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Agents</h1>
-          <p className="text-sm text-muted-foreground">
-            A prompt + model. The agent under evaluation when you start a run.
-          </p>
-        </div>
-        <Button asChild>
-          <Link href="/agents/new">+ New agent</Link>
-        </Button>
-      </div>
+    <div>
+      <PageHeader
+        title="Agents"
+        blurb="A prompt + model. The thing under evaluation when you start a run."
+        action={
+          <Button asChild variant="primary">
+            <Link href="/agents/new">+ New agent</Link>
+          </Button>
+        }
+      />
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <p className="text-sm text-muted-foreground font-mono">Loading…</p>
       ) : error ? (
         <p className="text-sm text-destructive">Failed to load: {error.message}</p>
       ) : data && data.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          No agents yet. Create one or load the SMS Support seed from the Test
-          Sets page.
-        </div>
+        <EmptyState
+          eyebrow="No agents"
+          title="Define what's being tested"
+          description="An agent is a system prompt + a model. Two seed agents come with the SMS demo."
+          action={
+            <Button asChild variant="primary">
+              <Link href="/agents/new">+ New agent</Link>
+            </Button>
+          }
+        />
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Model</TableHead>
-              <TableHead className="text-right">Temperature</TableHead>
-              <TableHead className="text-right">Max tokens</TableHead>
-              <TableHead>Created</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          <StatStrip
+            items={[
+              { label: data && data.length === 1 ? "agent" : "agents", value: data?.length ?? 0 },
+              { label: uniqueModels === 1 ? "model" : "models", value: uniqueModels },
+            ]}
+          />
+          <ul className="rounded-lg border border-border bg-card divide-y divide-border overflow-hidden fade-up">
             {data?.map((a) => (
-              <TableRow key={a.id}>
-                <TableCell>
-                  <Link
-                    href={`/agents/${a.id}`}
-                    className="font-medium hover:underline"
-                  >
-                    {a.name}
-                  </Link>
-                </TableCell>
-                <TableCell className="font-mono text-sm text-muted-foreground">
-                  {a.model}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {a.temperature.toFixed(1)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {a.max_tokens}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {formatDateTime(a.created_at)}
-                </TableCell>
-              </TableRow>
+              <li key={a.id}>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/agents/${a.id}`)}
+                  className="group w-full text-left flex items-center gap-6 px-5 py-4 hover:bg-secondary/40 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-3 flex-wrap">
+                      <span className="font-medium text-base">{a.name}</span>
+                      <span className="font-mono text-[11px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
+                        {a.model}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-sm text-muted-foreground line-clamp-1">
+                      {a.system_prompt}
+                    </p>
+                  </div>
+                  <div className="hidden md:flex items-center gap-5 text-xs text-muted-foreground whitespace-nowrap">
+                    <span>
+                      <span className="font-mono tabular-nums text-foreground">
+                        {a.temperature.toFixed(1)}
+                      </span>{" "}
+                      <span className="opacity-60">temp</span>
+                    </span>
+                    <span>
+                      <span className="font-mono tabular-nums text-foreground">
+                        {a.max_tokens}
+                      </span>{" "}
+                      <span className="opacity-60">tok</span>
+                    </span>
+                    <span className="font-mono">{formatDateTime(a.created_at)}</span>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+                </button>
+              </li>
             ))}
-          </TableBody>
-        </Table>
+          </ul>
+        </>
       )}
     </div>
   );

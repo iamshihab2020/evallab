@@ -7,6 +7,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { AgentForm, type AgentFormValues } from "@/components/agent-form";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -77,29 +78,28 @@ export default function AgentDetailPage() {
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
-      <div>
-        <Link
-          href="/agents"
-          className="text-sm text-muted-foreground hover:underline"
-        >
-          ← Agents
-        </Link>
-        <div className="mt-2 flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight">{data.name}</h1>
-            <p className="text-sm text-muted-foreground">
-              Created {formatDateTime(data.created_at)} · edited{" "}
-              {formatDateTime(data.updated_at)}
-            </p>
-          </div>
+    <div>
+      <PageHeader
+        eyebrow={
+          <>
+            <Link href="/agents" className="hover:text-foreground transition-colors">
+              Agents
+            </Link>
+            <span className="mx-1.5 opacity-40">/</span>
+            <span className="font-mono normal-case">{data.model}</span>
+          </>
+        }
+        title={data.name}
+        blurb={`Created ${formatDateTime(data.created_at)} · edited ${formatDateTime(data.updated_at)}`}
+        action={
           <DeleteAgentDialog
             isPending={deleteMutation.isPending}
             onConfirm={() => deleteMutation.mutate()}
           />
-        </div>
-      </div>
-
+        }
+      />
+      <div className="max-w-2xl space-y-6 fade-up">
+      <div className="border border-border/60 bg-card/40 p-6">
       <AgentForm
         defaultValues={{
           name: data.name,
@@ -113,7 +113,10 @@ export default function AgentDetailPage() {
         isSubmitting={updateMutation.isPending}
       />
 
+      </div>
+
       <TestPromptTool agentId={data.id} />
+      </div>
     </div>
   );
 }

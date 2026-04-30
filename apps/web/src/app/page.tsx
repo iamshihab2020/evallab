@@ -1,112 +1,94 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { StepRail } from "@/components/step-rail";
+import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
-import type { Agent, RunListItem, SeedLoadResult, TestSet } from "@/lib/types";
+import { formatDateTime } from "@/lib/format";
+import type { RunListItem } from "@/lib/types";
 
 export default function Home() {
-  const queryClient = useQueryClient();
-
-  const testSets = useQuery({
-    queryKey: ["test-sets"],
-    queryFn: () => api<TestSet[]>("/api/v1/test-sets"),
-  });
-  const agents = useQuery({
-    queryKey: ["agents"],
-    queryFn: () => api<Agent[]>("/api/v1/agents"),
-  });
   const runs = useQuery({
     queryKey: ["runs"],
     queryFn: () => api<RunListItem[]>("/api/v1/runs"),
   });
 
-  const seedMutation = useMutation({
-    mutationFn: () =>
-      api<SeedLoadResult>("/api/v1/seeds/sms-support-v1", { method: "POST" }),
-    onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ["test-sets"] });
-      queryClient.invalidateQueries({ queryKey: ["agents"] });
-      toast.success(res.already_loaded ? "Seed data already loaded" : "Seed data loaded");
-    },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const testSetCount = testSets.data?.length ?? 0;
-  const agentCount = agents.data?.length ?? 0;
-  const loaded = testSets.isSuccess && agents.isSuccess;
-  const showSeedCTA = loaded && testSetCount === 0 && agentCount === 0;
-
-  const sections = [
-    {
-      title: "Test Sets",
-      description: "Lists of inputs + expected behaviors.",
-      count: testSetCount,
-      ready: testSets.isSuccess,
-    },
-    {
-      title: "Agents",
-      description: "Prompt + model under evaluation.",
-      count: agentCount,
-      ready: agents.isSuccess,
-    },
-    {
-      title: "Runs",
-      description: "An agent scored against a test set.",
-      count: runs.data?.length ?? 0,
-      ready: runs.isSuccess,
-    },
-    { title: "Compare", description: "Two runs side by side.", count: 0, ready: true },
-  ];
+  const recent = (runs.data ?? []).slice(0, 5);
 
   return (
-    <div className="space-y-12">
-      <section className="space-y-3">
-        <h1 className="text-3xl font-semibold tracking-tight">EvalLab</h1>
-        <p className="max-w-2xl text-muted-foreground">
-          Measure your LLM outputs systematically. Define test sets, define agents, run them,
-          and compare runs side by side.
+    <div className="space-y-12 max-w-5xl mx-auto">
+      <section className="space-y-3 fade-up pt-2">
+        <h1 className="text-4xl sm:text-5xl font-medium tracking-tight">
+          Measure what your prompts actually do.
+        </h1>
+        <p className="text-base text-muted-foreground max-w-2xl leading-relaxed">
+          Define test sets, define agents, run them against an LLM-as-judge, and
+          compare the diff. Ship prompts with numbers, not vibes.
         </p>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {sections.map((s) => (
-          <Card key={s.title}>
-            <CardHeader>
-              <CardTitle>{s.title}</CardTitle>
-              <CardDescription>{s.description}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-semibold tabular-nums">
-                {s.ready ? s.count : "—"}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
+      <section className="space-y-4">
+        <p className="eyebrow">Get started</p>
+        <StepRail />
       </section>
 
-      {showSeedCTA && (
-        <section className="space-y-2">
-          <Button
-            onClick={() => seedMutation.mutate()}
-            disabled={seedMutation.isPending}
-          >
-            {seedMutation.isPending ? "Loading…" : "Load seed data"}
-          </Button>
-          <p className="text-sm text-muted-foreground">
-            Loads the SMS Support v1 demo: 30 cases + 2 agents.
-          </p>
-        </section>
-      )}
+      <section className="space-y-4 fade-up" style={{ animationDelay: "120ms" }}>
+        <div className="flex items-baseline justify-between">
+          <p className="eyebrow">Recent runs</p>
+          {recent.length > 0 && (
+            <Link
+              href="/runs"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              View all →
+            </Link>
+          )}
+        </div>
+        {recent.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+            No runs yet. Complete the steps above to start measuring.
+          </div>
+        ) : (
+          <ul className="rounded-lg border border-border bg-card divide-y divide-border overflow-hidden">
+            {recent.map((r) => (
+              <li key={r.id}>
+                <Link
+                  href={`/runs/${r.id}`}
+                  className="flex items-center gap-4 px-5 py-3.5 text-sm hover:bg-secondary/40 transition-colors"
+                >
+                  <span className="flex-1 min-w-0 truncate font-medium">
+                    {r.test_set_name}
+                  </span>
+                  <span className="hidden sm:block w-48 truncate text-muted-foreground">
+                    {r.agent_name}
+                  </span>
+                  <span className="w-24 text-right font-mono tabular-nums text-muted-foreground">
+                    {r.pass_rate !== null ? `${(r.pass_rate * 100).toFixed(0)}%` : "—"}
+                  </span>
+                  <span className="w-24 flex justify-end">
+                    <Badge
+                      variant={
+                        r.status === "completed"
+                          ? "pass"
+                          : r.status === "failed"
+                          ? "destructive"
+                          : "pending"
+                      }
+                    >
+                      {r.status}
+                    </Badge>
+                  </span>
+                  <span className="hidden md:block w-20 text-right font-mono text-xs text-muted-foreground">
+                    {formatDateTime(r.started_at).split(",")[0]}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

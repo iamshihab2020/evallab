@@ -1,24 +1,22 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
+import { EmptyState } from "@/components/empty-state";
+import { PageHeader } from "@/components/page-header";
+import { StatStrip } from "@/components/stat-strip";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import type { SeedLoadResult, TestSet } from "@/lib/types";
 
 export default function TestSetsPage() {
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["test-sets"],
@@ -36,70 +34,84 @@ export default function TestSetsPage() {
     onError: (e) => toast.error(e.message),
   });
 
+  const totalCases = (data ?? []).reduce((sum, t) => sum + t.case_count, 0);
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-end justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Test Sets</h1>
-          <p className="text-sm text-muted-foreground">
-            Lists of inputs + expected behaviors used to score agents.
-          </p>
-        </div>
-        <Button asChild>
-          <Link href="/test-sets/new">+ New test set</Link>
-        </Button>
-      </div>
+    <div>
+      <PageHeader
+        title="Test sets"
+        blurb="Lists of inputs + expected behaviors used to score agents."
+        action={
+          <Button asChild variant="primary">
+            <Link href="/test-sets/new">+ New test set</Link>
+          </Button>
+        }
+      />
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <p className="text-sm text-muted-foreground font-mono">Loading…</p>
       ) : error ? (
         <p className="text-sm text-destructive">Failed to load: {error.message}</p>
       ) : data && data.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-center">
-          <p className="mb-4 text-sm text-muted-foreground">
-            No test sets yet. Load the SMS Support seed (30 cases) to get started.
-          </p>
-          <Button
-            onClick={() => seedMutation.mutate()}
-            disabled={seedMutation.isPending}
-          >
-            {seedMutation.isPending ? "Loading seed…" : "Load seed data"}
-          </Button>
-        </div>
+        <EmptyState
+          eyebrow="Empty"
+          title="Nothing to score yet"
+          description="Load the SMS Support demo (30 cases, 2 agents) or build one from scratch."
+          action={
+            <div className="flex gap-2 justify-center">
+              <Button
+                variant="primary"
+                loading={seedMutation.isPending}
+                onClick={() => seedMutation.mutate()}
+              >
+                Load demo
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/test-sets/new">+ New test set</Link>
+              </Button>
+            </div>
+          }
+        />
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead className="text-right">Cases</TableHead>
-              <TableHead>Created</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          <StatStrip
+            items={[
+              { label: data && data.length === 1 ? "test set" : "test sets", value: data?.length ?? 0 },
+              { label: "total cases", value: totalCases },
+            ]}
+          />
+          <ul className="rounded-lg border border-border bg-card divide-y divide-border overflow-hidden fade-up">
             {data?.map((ts) => (
-              <TableRow key={ts.id}>
-                <TableCell>
-                  <Link
-                    href={`/test-sets/${ts.id}`}
-                    className="font-medium hover:underline"
-                  >
-                    {ts.name}
-                  </Link>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {ts.description ?? "—"}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {ts.case_count}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {formatDateTime(ts.created_at)}
-                </TableCell>
-              </TableRow>
+              <li key={ts.id}>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/test-sets/${ts.id}`)}
+                  className="group w-full text-left flex items-center gap-6 px-5 py-4 hover:bg-secondary/40 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-3">
+                      <span className="font-medium text-base truncate">
+                        {ts.name}
+                      </span>
+                      <span className="text-xs font-mono text-muted-foreground tabular-nums shrink-0">
+                        {ts.case_count} {ts.case_count === 1 ? "case" : "cases"}
+                      </span>
+                    </div>
+                    {ts.description && (
+                      <p className="mt-1 text-sm text-muted-foreground line-clamp-1">
+                        {ts.description}
+                      </p>
+                    )}
+                  </div>
+                  <span className="hidden sm:block font-mono text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                    {formatDateTime(ts.created_at)}
+                  </span>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all" />
+                </button>
+              </li>
             ))}
-          </TableBody>
-        </Table>
+          </ul>
+        </>
       )}
     </div>
   );

@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { motion } from "motion/react";
+
+import { PageHeader } from "@/components/page-header";
 import { api } from "@/lib/api";
 import { downloadFile } from "@/lib/download";
 import { formatDateTime } from "@/lib/format";
@@ -35,15 +38,17 @@ import type { CaseResult, RunDetail } from "@/lib/types";
 
 import { toast } from "sonner";
 
+const GLOSSARY_KEY = "evallab.runs.glossary.dismissed";
+
 const detailKey = (id: string) => ["runs", id];
 
 function statusVariant(
   status: string,
-): "default" | "secondary" | "destructive" | "outline" {
-  if (status === "completed") return "default";
+): "pass" | "destructive" | "pending" | "default" {
+  if (status === "completed") return "pass";
   if (status === "failed") return "destructive";
-  if (status === "running" || status === "pending") return "secondary";
-  return "outline";
+  if (status === "running" || status === "pending") return "pending";
+  return "default";
 }
 
 export default function RunDetailPage() {
@@ -66,40 +71,29 @@ export default function RunDetailPage() {
     );
 
   return (
-    <div className="space-y-8">
-      <div>
-        <Link href="/runs" className="text-sm text-muted-foreground hover:underline">
-          ← Runs
-        </Link>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">Run</h1>
-          <Badge variant={statusVariant(data.status)}>{data.status}</Badge>
-          {data.errored_cases > 0 && (
-            <Badge variant="destructive">{data.errored_cases} errors</Badge>
-          )}
-        </div>
-        <div className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1 text-sm text-muted-foreground sm:grid-cols-2">
-          <div>
-            Test set:{" "}
-            <Link href={`/test-sets/${data.test_set_id}`} className="hover:underline">
-              {data.test_set_name}
+    <div>
+      <PageHeader
+        eyebrow={
+          <>
+            <Link href="/runs" className="hover:text-foreground transition-colors">
+              Runs
             </Link>
-          </div>
-          <div>
-            Agent:{" "}
-            <Link href={`/agents/${data.agent_id}`} className="hover:underline">
-              {data.agent_name}
-            </Link>
-          </div>
-          <div>
-            Judge: <span className="font-mono">{data.judge_model}</span>
-          </div>
-          <div>Started: {formatDateTime(data.started_at)}</div>
-          {data.completed_at && <div>Completed: {formatDateTime(data.completed_at)}</div>}
-        </div>
-        <div className="mt-3">
+            <span className="mx-1.5 opacity-40">/</span>
+            <span className="font-mono normal-case">{data.id.slice(0, 8)}</span>
+          </>
+        }
+        title={
+          <span className="flex items-baseline gap-3 flex-wrap">
+            <span>Run</span>
+            <Badge variant={statusVariant(data.status)}>{data.status}</Badge>
+            {data.errored_cases > 0 && (
+              <Badge variant="destructive">{data.errored_cases} ERR</Badge>
+            )}
+          </span>
+        }
+        action={
           <Button
-            variant="outline"
+            variant="mono"
             disabled={data.status !== "completed"}
             onClick={async () => {
               try {
@@ -112,9 +106,25 @@ export default function RunDetailPage() {
               }
             }}
           >
-            Download Markdown Report
+            ↓ Download Markdown
           </Button>
-        </div>
+        }
+      />
+
+      <div className="space-y-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs fade-up">
+        <MetaItem label="Test set" value={
+          <Link href={`/test-sets/${data.test_set_id}`} className="lime-underline">
+            {data.test_set_name}
+          </Link>
+        } />
+        <MetaItem label="Agent" value={
+          <Link href={`/agents/${data.agent_id}`} className="lime-underline">
+            {data.agent_name}
+          </Link>
+        } />
+        <MetaItem label="Judge" value={<span className="font-mono">{data.judge_model}</span>} />
+        <MetaItem label="Started" value={<span className="font-mono">{formatDateTime(data.started_at)}</span>} />
       </div>
 
       {data.error && (
@@ -133,180 +143,395 @@ export default function RunDetailPage() {
       )}
 
       {data.status === "completed" && data.stats && <CompletedView data={data} />}
+      </div>
     </div>
   );
 }
 
+function MetaItem({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-border bg-card px-4 py-3">
+      <p className="eyebrow">{label}</p>
+      <p className="mt-1 text-sm">{value}</p>
+    </div>
+  );
+}
+
+function Glossary() {
+  const [open, setOpen] = useState<boolean>(true);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(GLOSSARY_KEY) === "true") setOpen(false);
+    } catch {}
+  }, []);
+
+  function dismiss() {
+    setOpen(false);
+    try {
+      localStorage.setItem(GLOSSARY_KEY, "true");
+    } catch {}
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="text-xs font-mono uppercase tracking-widest text-muted-foreground hover:text-foreground"
+      >
+        ? What am I looking at
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-5 fade-up">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2 max-w-2xl">
+          <p className="eyebrow">What am I looking at</p>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            <span className="text-foreground">Pass rate</span> = % of scored cases ≥ 4. The
+            <span className="text-foreground"> judge</span> is a second LLM call that scores the agent's
+            response 1–5 against the case's expected behavior, at temperature 0 for determinism.
+            <span className="text-foreground"> Errored</span> cases (network blips, malformed JSON) are
+            excluded from stats but reported separately below.
+          </p>
+        </div>
+        <button
+          onClick={dismiss}
+          className="text-xs text-muted-foreground hover:text-foreground"
+        >
+          Got it
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Big serif italic numeral that counts up from 0 to value over 800ms. */
+function CountUp({ value, format }: { value: number; format: (n: number) => string }) {
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    const start = performance.now();
+    const dur = 800;
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / dur);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setShown(value * eased);
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return <>{format(shown)}</>;
+}
+
 function RunningView({ data }: { data: RunDetail }) {
-  const pct = data.total_cases
-    ? Math.round((data.completed_cases / data.total_cases) * 100)
-    : 0;
+  const total = data.total_cases || 0;
+  const done = data.completed_cases || 0;
+  const pct = total ? Math.round((done / total) * 100) : 0;
   const recent = [...data.case_results]
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .slice(0, 5);
 
+  // Build a slot for every case (filled or pending)
+  const filledByIndex = new Map<number, CaseResult>();
+  data.case_results.forEach((cr, i) => filledByIndex.set(i, cr));
+  const slots = Array.from({ length: Math.max(total, data.case_results.length) }, (_, i) =>
+    filledByIndex.get(i),
+  );
+
+  // Estimate remaining time at 28 RPM, 2 calls per case
+  const remaining = Math.max(0, total - done);
+  const remainingSec = Math.ceil((remaining * 2 * 60) / 28);
+  const remainingTxt =
+    remainingSec === 0
+      ? "—"
+      : remainingSec >= 60
+      ? `~${Math.floor(remainingSec / 60)}m ${remainingSec % 60}s left`
+      : `~${remainingSec}s left`;
+
   return (
-    <section className="space-y-4">
-      <div className="space-y-2">
-        <div className="flex justify-between text-sm">
-          <span>Progress</span>
-          <span className="tabular-nums">
-            {data.completed_cases} / {data.total_cases} ({pct}%)
-          </span>
+    <div className="space-y-8">
+      <section className="rounded-lg border border-border bg-card p-6 fade-up space-y-5">
+        <div className="flex items-end justify-between gap-4 flex-wrap">
+          <div className="space-y-1">
+            <p className="eyebrow">In progress</p>
+            <p className="text-5xl font-light tracking-tight tabular-nums leading-none">
+              <CountUp value={pct} format={(n) => `${n.toFixed(0)}%`} />
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {done} of {total} cases scored ·{" "}
+              <span className="text-foreground font-mono">{remainingTxt}</span>
+            </p>
+          </div>
+          <div className="hidden sm:flex items-center gap-2 text-xs font-mono text-muted-foreground">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-foreground opacity-50 animate-ping" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-foreground" />
+            </span>
+            polling every 2s
+          </div>
         </div>
-        <Progress value={pct} />
-      </div>
-      <div className="space-y-2">
-        <h2 className="text-lg font-semibold">Recent results</h2>
+
+        <div className="h-1 rounded-full bg-secondary overflow-hidden">
+          <div
+            className="h-full rounded-full bg-foreground transition-all duration-500"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+
+        {total > 0 && (
+          <div>
+            <p className="eyebrow mb-2.5">Cases ({total})</p>
+            <CaseDotGrid slots={slots} />
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <p className="eyebrow">Recent results</p>
         {recent.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Waiting for first result…</p>
+          <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground text-center">
+            Waiting for first result…
+          </div>
         ) : (
-          <ul className="space-y-2">
+          <ul className="rounded-lg border border-border bg-card divide-y divide-border overflow-hidden">
             {recent.map((r) => (
               <li
                 key={r.id}
-                className="flex items-center gap-3 rounded-md border p-3 text-sm"
+                className="flex items-center gap-3 px-4 py-3 text-sm"
               >
                 {r.error ? (
                   <Badge variant="destructive">err</Badge>
                 ) : (
-                  <Badge variant="secondary">score {r.judge_score}</Badge>
+                  <Badge variant="pass">score {r.judge_score}</Badge>
                 )}
-                <span className="truncate">
+                <span className="flex-1 truncate text-muted-foreground">
                   {r.error ? r.error : r.judge_reasoning}
                 </span>
+                {r.agent_latency_ms != null && (
+                  <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                    {r.agent_latency_ms}ms
+                  </span>
+                )}
               </li>
             ))}
           </ul>
         )}
-      </div>
-    </section>
+      </section>
+    </div>
+  );
+}
+
+/** Compact case grid — fills as cases complete. Color = score. */
+function CaseDotGrid({ slots }: { slots: (CaseResult | undefined)[] }) {
+  return (
+    <div className="grid gap-1.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(20px, 1fr))" }}>
+      {slots.map((cr, i) => {
+        if (!cr) {
+          return (
+            <span
+              key={i}
+              className="aspect-square rounded-sm border border-border/60"
+              title={`Case ${i + 1} · pending`}
+            />
+          );
+        }
+        if (cr.error) {
+          return (
+            <span
+              key={cr.id}
+              className="aspect-square rounded-sm bg-destructive/70"
+              title={`Case ${i + 1} · errored`}
+            />
+          );
+        }
+        const score = cr.judge_score ?? 0;
+        const opacity = 0.25 + (score - 1) * 0.18;
+        return (
+          <span
+            key={cr.id}
+            className="aspect-square rounded-sm bg-foreground"
+            style={{ opacity }}
+            title={`Case ${i + 1} · score ${score}`}
+          />
+        );
+      })}
+    </div>
   );
 }
 
 function CompletedView({ data }: { data: RunDetail }) {
   const s = data.stats!;
+  const ordered = [...data.case_results].sort((a, b) =>
+    a.created_at.localeCompare(b.created_at),
+  );
+
   return (
-    <div className="space-y-8">
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">Pass rate</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold tabular-nums">
-              {(s.pass_rate * 100).toFixed(0)}%
+    <div className="space-y-10">
+      {/* Hero — pass rate + KPI grid + cases at a glance, one tight section */}
+      <section className="rounded-lg border border-border bg-card p-6 sm:p-8 fade-up">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-8">
+          <div className="space-y-3">
+            <p className="eyebrow">Pass rate</p>
+            <p className="text-7xl sm:text-8xl font-light tracking-tight tabular-nums leading-none">
+              <CountUp value={s.pass_rate * 100} format={(n) => `${n.toFixed(0)}%`} />
             </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">Avg score</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold tabular-nums">
-              {s.avg_score.toFixed(2)}
+            <p className="text-sm text-muted-foreground max-w-md">
+              {s.successful_cases} of {s.total_cases} cases scored ≥ 4 by the judge.
             </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">Successful</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold tabular-nums">
-              {s.successful_cases}/{s.total_cases}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">Errored</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold tabular-nums">{s.errored_cases}</p>
-          </CardContent>
-        </Card>
-      </section>
+          </div>
+          <div className="grid grid-cols-3 gap-px bg-border rounded-md overflow-hidden self-start">
+            <KpiCell
+              label="Avg"
+              value={<CountUp value={s.avg_score} format={(n) => n.toFixed(2)} />}
+            />
+            <KpiCell
+              label="Scored"
+              value={`${s.successful_cases}/${s.total_cases}`}
+              mono
+            />
+            <KpiCell
+              label="Errored"
+              value={s.errored_cases.toString()}
+              mono
+              tone={s.errored_cases > 0 ? "destructive" : undefined}
+            />
+          </div>
+        </div>
 
-      <section className="space-y-2">
-        <h2 className="text-lg font-semibold">Score distribution</h2>
-        <ScoreDistribution
-          distribution={s.score_distribution}
-          total={s.successful_cases}
-        />
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-lg font-semibold">Per category</h2>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Category</TableHead>
-              <TableHead className="text-right">Count</TableHead>
-              <TableHead className="text-right">Pass rate</TableHead>
-              <TableHead className="text-right">Avg score</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {Object.entries(s.per_category).map(([cat, c]) => (
-              <TableRow key={cat}>
-                <TableCell>{cat}</TableCell>
-                <TableCell className="text-right tabular-nums">{c.count}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {(c.pass_rate * 100).toFixed(0)}%
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {c.avg_score.toFixed(2)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Worst 5 cases</h2>
-        {s.worst_cases.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No cases scored.</p>
-        ) : (
-          s.worst_cases.map((w) => {
-            const cr = data.case_results.find((c) => c.id === w.case_result_id);
-            return (
-              <WorstCard
-                key={w.case_result_id}
-                input={w.input}
-                cr={cr}
-                score={w.judge_score}
-                reasoning={w.judge_reasoning}
-              />
-            );
-          })
+        {ordered.length > 0 && (
+          <div className="mt-7 pt-6 border-t border-border/60">
+            <div className="flex items-baseline justify-between mb-2.5">
+              <p className="eyebrow">Cases at a glance</p>
+              <p className="text-[10px] font-mono text-muted-foreground">
+                <span className="inline-block h-1.5 w-1.5 rounded-sm bg-foreground mr-1" />
+                score 5
+                <span className="inline-block h-1.5 w-1.5 rounded-sm bg-foreground/40 mx-1 ml-3" />
+                score 1
+                <span className="inline-block h-1.5 w-1.5 rounded-sm bg-destructive/70 mx-1 ml-3" />
+                error
+              </p>
+            </div>
+            <CaseDotGrid slots={ordered} />
+          </div>
         )}
       </section>
 
-      <section className="space-y-2">
-        <h2 className="text-lg font-semibold">All results</h2>
+      <Glossary />
+
+      {/* Distribution + Per-category side by side */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-8 fade-up">
+        <div className="space-y-3">
+          <p className="eyebrow">Score distribution</p>
+          <ScoreDistribution
+            distribution={s.score_distribution}
+            total={s.successful_cases}
+          />
+        </div>
+        <div className="space-y-3">
+          <p className="eyebrow">Per category</p>
+          <div className="rounded-lg border border-border bg-card overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="font-mono text-[10px] uppercase tracking-widest">Category</TableHead>
+                  <TableHead className="text-right font-mono text-[10px] uppercase tracking-widest">N</TableHead>
+                  <TableHead className="text-right font-mono text-[10px] uppercase tracking-widest">Pass</TableHead>
+                  <TableHead className="text-right font-mono text-[10px] uppercase tracking-widest">Avg</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {Object.entries(s.per_category).map(([cat, c]) => (
+                  <TableRow key={cat}>
+                    <TableCell className="capitalize">{cat}</TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">{c.count}</TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">
+                      {(c.pass_rate * 100).toFixed(0)}%
+                    </TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">
+                      {c.avg_score.toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      </section>
+
+      {/* Worst cases — 2-col on lg */}
+      <section className="space-y-3">
+        <p className="eyebrow">Worst {s.worst_cases.length} cases</p>
+        {s.worst_cases.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No cases scored.</p>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {s.worst_cases.map((w) => {
+              const cr = data.case_results.find((c) => c.id === w.case_result_id);
+              return (
+                <WorstCard
+                  key={w.case_result_id}
+                  input={w.input}
+                  cr={cr}
+                  score={w.judge_score}
+                  reasoning={w.judge_reasoning}
+                />
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <p className="eyebrow">All results ({data.case_results.length})</p>
         <AllResultsTable caseResults={data.case_results} />
       </section>
 
       {data.errored_cases > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-lg font-semibold text-destructive">Errors</h2>
-          <ul className="space-y-2">
+        <section className="space-y-3">
+          <p className="eyebrow text-destructive">Errors ({data.errored_cases})</p>
+          <ul className="rounded-lg border border-destructive/30 bg-destructive/[0.04] divide-y divide-destructive/20 overflow-hidden">
             {data.case_results
               .filter((c) => c.error)
               .map((c) => (
-                <li
-                  key={c.id}
-                  className="rounded-md border border-destructive/50 p-3 text-sm"
-                >
+                <li key={c.id} className="px-4 py-3 text-sm">
                   <p className="font-mono text-xs text-destructive">{c.error}</p>
                 </li>
               ))}
           </ul>
         </section>
       )}
+    </div>
+  );
+}
+
+function KpiCell({
+  label,
+  value,
+  mono = false,
+  tone,
+  hidden = false,
+}: {
+  label: string;
+  value: React.ReactNode;
+  mono?: boolean;
+  tone?: "destructive";
+  hidden?: boolean;
+}) {
+  if (hidden) return null;
+  return (
+    <div className="bg-card p-4 space-y-1">
+      <p className="eyebrow">{label}</p>
+      <p
+        className={`text-xl font-light tabular-nums ${mono ? "font-mono" : ""} ${
+          tone === "destructive" ? "text-destructive" : ""
+        }`}
+      >
+        {value}
+      </p>
     </div>
   );
 }
@@ -318,29 +543,34 @@ function ScoreDistribution({
   distribution: Record<string, number>;
   total: number;
 }) {
-  const colors: Record<string, string> = {
-    "1": "bg-red-500",
-    "2": "bg-orange-500",
-    "3": "bg-yellow-500",
-    "4": "bg-lime-500",
-    "5": "bg-green-500",
-  };
   return (
     <div className="space-y-2">
-      {[1, 2, 3, 4, 5].map((i) => {
+      {[1, 2, 3, 4, 5].map((i, idx) => {
         const n = distribution[String(i)] ?? 0;
         const pct = total > 0 ? (n / total) * 100 : 0;
+        // Single foreground tint — opacity scales with score
+        const opacity = 0.25 + (i - 1) * 0.18; // 1→0.25, 5→0.97
+        const barColor = "bg-foreground";
         return (
-          <div key={i} className="flex items-center gap-3">
-            <span className="w-4 text-sm tabular-nums">{i}</span>
-            <div className="flex-1 h-5 rounded bg-muted overflow-hidden">
-              <div
-                className={`h-full ${colors[String(i)]}`}
-                style={{ width: `${pct}%` }}
+          <motion.div
+            key={i}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.06 * idx }}
+            className="flex items-center gap-3"
+          >
+            <span className="w-4 font-mono text-xs tabular-nums text-muted-foreground">{i}</span>
+            <div className="flex-1 h-2 rounded-full bg-secondary overflow-hidden">
+              <motion.div
+                className={`h-full rounded-full ${barColor}`}
+                style={{ opacity }}
+                initial={{ width: 0 }}
+                animate={{ width: `${pct}%` }}
+                transition={{ duration: 0.5, delay: 0.05 * idx, ease: [0.2, 0.7, 0.2, 1] }}
               />
             </div>
-            <span className="w-10 text-right text-sm tabular-nums">{n}</span>
-          </div>
+            <span className="w-10 text-right font-mono text-xs tabular-nums">{n}</span>
+          </motion.div>
         );
       })}
     </div>
