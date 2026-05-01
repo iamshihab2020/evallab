@@ -1,0 +1,40 @@
+# Render Infrastructure-as-Code for the EvalLab API.
+#
+# Connecting this repo to Render and choosing "Auto-deploy from this file"
+# is enough to bring the service up. The dashboard will create the service
+# and prompt you for the secret env vars (DATABASE_URL, GROQ_API_KEY,
+# EVALLAB_API_KEY) — those are NOT in this file by design.
+#
+# Frontend (Vercel) and database (Neon) are not described here because
+# Render IaC only covers Render-managed resources.
+
+services:
+  - type: web
+    name: evallab-api
+    runtime: python
+    plan: free
+    rootDir: apps/api
+    # Install uv, sync deps, then run pending Alembic migrations. Migration
+    # apply on every deploy is cheap (no-op when already at head) and removes
+    # a manual step that would otherwise be easy to forget.
+    buildCommand: pip install uv && uv sync --frozen && uv run alembic upgrade head
+    startCommand: uv run uvicorn src.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      # Neon connection string — paste in dashboard. Use the asyncpg scheme:
+      # postgresql+asyncpg://USER:PASS@HOST/DB?ssl=require
+      - key: DATABASE_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      # API gate. Set to a long random string in production so only the
+      # paired frontend can hit the API.
+      - key: EVALLAB_API_KEY
+        sync: false
+      # Comma-separated. Include the Vercel frontend URL plus localhost
+      # for any local development that points at this service.
+      - key: CORS_ORIGINS
+        sync: false
