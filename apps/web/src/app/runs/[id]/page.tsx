@@ -392,6 +392,7 @@ function CompletedView({ data }: { data: RunDetail }) {
   const ordered = [...data.case_results].sort((a, b) =>
     a.created_at.localeCompare(b.created_at),
   );
+  const showCost = s.tokens_total > 0;
 
   return (
     <div className="space-y-10">
@@ -407,7 +408,9 @@ function CompletedView({ data }: { data: RunDetail }) {
               {s.successful_cases} of {s.total_cases} cases scored ≥ 4 by the judge.
             </p>
           </div>
-          <div className="grid grid-cols-3 gap-px bg-border rounded-md overflow-hidden self-start">
+          <div
+            className={`grid ${showCost ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"} gap-px bg-border rounded-md overflow-hidden self-start`}
+          >
             <KpiCell
               label="Avg"
               value={<CountUp value={s.avg_score} format={(n) => n.toFixed(2)} />}
@@ -423,6 +426,19 @@ function CompletedView({ data }: { data: RunDetail }) {
               mono
               tone={s.errored_cases > 0 ? "destructive" : undefined}
             />
+            {showCost && (
+              <KpiCell
+                label="Cost"
+                value={
+                  <span title={`${s.tokens_total.toLocaleString()} tok (${s.tokens_in.toLocaleString()} in · ${s.tokens_out.toLocaleString()} out)`}>
+                    {s.estimated_cost_usd > 0
+                      ? `~$${s.estimated_cost_usd.toFixed(4)}`
+                      : `${formatCompact(s.tokens_total)} tok`}
+                  </span>
+                }
+                mono
+              />
+            )}
           </div>
         </div>
 
@@ -445,6 +461,8 @@ function CompletedView({ data }: { data: RunDetail }) {
       </section>
 
       <Glossary />
+
+      {s.per_dimension && <DimensionStrip dims={s.per_dimension} />}
 
       {/* Distribution + Per-category side by side */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-8 fade-up">
@@ -778,6 +796,7 @@ function WorstCard({
             </p>
           </div>
         )}
+        <DimensionChips cr={cr} />
         {cr && (cr.agent_prompt_sent || cr.judge_prompt_sent) && (
           <Collapsible>
             <CollapsibleTrigger asChild>
@@ -902,6 +921,7 @@ function AllResultsTable({ caseResults }: { caseResults: CaseResult[] }) {
                       <div className="rounded-md border border-border bg-card px-4 py-3 leading-relaxed whitespace-pre-wrap min-h-[6rem]">
                         {open.judge_reasoning ?? <span className="text-muted-foreground italic">no reasoning</span>}
                       </div>
+                      <DimensionChips cr={open} />
                     </div>
                   </div>
 
@@ -944,6 +964,91 @@ function AllResultsTable({ caseResults }: { caseResults: CaseResult[] }) {
 function extractUserFromPrompt(prompt: string): string {
   const idx = prompt.indexOf("USER:\n");
   return idx >= 0 ? prompt.slice(idx + 6) : prompt;
+}
+
+function formatCompact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}k`;
+  return n.toString();
+}
+
+const DIMENSION_ORDER: Array<{ key: string; label: string; short: string }> = [
+  { key: "accuracy", label: "Accuracy", short: "acc" },
+  { key: "completeness", label: "Completeness", short: "cmp" },
+  { key: "tone", label: "Tone", short: "tone" },
+  { key: "safety", label: "Safety", short: "saf" },
+];
+
+function DimensionStrip({ dims }: { dims: Record<string, number> }) {
+  return (
+    <section className="space-y-3 fade-up">
+      <div className="flex items-baseline justify-between">
+        <p className="eyebrow">Per-dimension averages</p>
+        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+          each scored 1–5 independently
+        </p>
+      </div>
+      <div className="rounded-lg border border-border bg-card p-5 space-y-3">
+        {DIMENSION_ORDER.map(({ key, label }) => {
+          const v = dims[key] ?? 0;
+          const pct = (Math.max(0, Math.min(5, v)) / 5) * 100;
+          return (
+            <div key={key} className="flex items-center gap-3 text-sm">
+              <span className="w-32 text-muted-foreground capitalize">{label}</span>
+              <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-foreground/80 transition-all duration-500"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <span className="w-12 text-right font-mono tabular-nums text-muted-foreground">
+                {v.toFixed(2)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function DimensionChips({ cr }: { cr: CaseResult | undefined }) {
+  if (!cr) return null;
+  const present =
+    cr.dim_accuracy != null &&
+    cr.dim_completeness != null &&
+    cr.dim_tone != null &&
+    cr.dim_safety != null;
+  if (!present) return null;
+  const values: Record<string, number | null> = {
+    accuracy: cr.dim_accuracy,
+    completeness: cr.dim_completeness,
+    tone: cr.dim_tone,
+    safety: cr.dim_safety,
+  };
+  return (
+    <div className="flex flex-wrap gap-1.5 text-[10px] font-mono">
+      {DIMENSION_ORDER.map(({ key, short }) => {
+        const v = values[key];
+        if (v == null) return null;
+        const tone =
+          v <= 2
+            ? "border-destructive/40 text-destructive"
+            : v >= 4
+              ? "border-foreground/30 text-foreground"
+              : "border-border text-muted-foreground";
+        return (
+          <span
+            key={key}
+            className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 ${tone}`}
+          >
+            <span className="uppercase tracking-widest opacity-70">{short}</span>
+            <span className="tabular-nums">{v}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 function FailurePatterns({

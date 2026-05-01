@@ -43,7 +43,7 @@ async def test_prompt(
         max_tokens = body.max_tokens if body.max_tokens is not None else 512
 
     try:
-        output, latency_ms = await call_llm(
+        output, latency_ms, _usage = await call_llm(
             model=model,
             system=system,
             user=body.input,

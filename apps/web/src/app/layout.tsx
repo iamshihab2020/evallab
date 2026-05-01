@@ -42,7 +42,7 @@ export default function RootLayout({
             <footer className="border-t border-border/60 mt-16 py-5 text-xs text-muted-foreground">
               <div className="container mx-auto flex items-center justify-between px-6 sm:px-10 lg:px-16">
                 <span className="font-mono">EvalLab · v1</span>
-                <span className="font-mono">SPEC.md</span>
+                <span className="font-mono">Sheikh Shihab Hossain</span>
               </div>
             </footer>
             <Tour />

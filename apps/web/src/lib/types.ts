@@ -149,10 +149,18 @@ export type CaseResult = {
   agent_prompt_sent: string | null;
   agent_output: string | null;
   agent_latency_ms: number | null;
+  agent_input_tokens: number | null;
+  agent_output_tokens: number | null;
   judge_prompt_sent: string | null;
   judge_score: number | null;
   judge_reasoning: string | null;
   judge_latency_ms: number | null;
+  judge_input_tokens: number | null;
+  judge_output_tokens: number | null;
+  dim_accuracy: number | null;
+  dim_completeness: number | null;
+  dim_tone: number | null;
+  dim_safety: number | null;
   error: string | null;
   created_at: string;
   human_score: HumanScore | null;
@@ -197,6 +205,20 @@ export type RunStats = {
   score_distribution: Record<string, number>;
   per_category: Record<string, CategoryStat>;
   worst_cases: WorstCase[];
+  per_dimension: Record<string, number> | null;
+  tokens_in: number;
+  tokens_out: number;
+  tokens_total: number;
+  estimated_cost_usd: number;
+};
+
+export type RunUsage = {
+  tokens_in_today: number;
+  tokens_out_today: number;
+  tokens_total_today: number;
+  runs_today: number;
+  daily_quota_tokens: number;
+  percent_used: number;
 };
 
 export type FailureCluster = {

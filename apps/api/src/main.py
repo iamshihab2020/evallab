@@ -5,12 +5,26 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import settings
-from src.routes import agents, calibration, debug, health, runs, seeds, test_cases, test_sets
+from src.routes import (
+    agents,
+    calibration,
+    debug,
+    health,
+    runs,
+    seeds,
+    test_cases,
+    test_sets,
+    usage,
+)
 from src.routes.runs import heal_orphaned_runs
+from src.seeds.load_all import auto_seed_on_startup
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    # Idempotent: each seed checks for an existing test set by name. Safe to
+    # call on every cold start; runs against the same DB Render is wired to.
+    await auto_seed_on_startup()
     await heal_orphaned_runs()
     yield
 
@@ -33,3 +47,4 @@ app.include_router(seeds.router, prefix="/api/v1")
 app.include_router(debug.router, prefix="/api/v1")
 app.include_router(runs.router, prefix="/api/v1")
 app.include_router(calibration.router, prefix="/api/v1")
+app.include_router(usage.router, prefix="/api/v1")

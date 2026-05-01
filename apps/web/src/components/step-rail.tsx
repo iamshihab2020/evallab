@@ -51,12 +51,17 @@ export function StepRail() {
 
   const seedMutation = useMutation({
     mutationFn: () =>
-      api<SeedLoadResult>("/api/v1/seeds/sms-support-v1", { method: "POST" }),
-    onSuccess: (res) => {
+      api<SeedLoadResult[]>("/api/v1/seeds/all", { method: "POST" }),
+    onSuccess: (results) => {
       queryClient.invalidateQueries({ queryKey: ["test-sets"] });
       queryClient.invalidateQueries({ queryKey: ["agents"] });
       queryClient.invalidateQueries({ queryKey: ["runs"] });
-      toast.success(res.already_loaded ? "Seed already loaded" : "Seed loaded");
+      const created = results.filter((r) => !r.already_loaded).length;
+      toast.success(
+        created === 0
+          ? "All demo data already loaded"
+          : `Loaded ${created} demo dataset${created === 1 ? "" : "s"}`,
+      );
     },
     onError: (e) => toast.error(e.message),
   });

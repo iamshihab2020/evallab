@@ -52,6 +52,28 @@ def _get_client() -> AsyncOpenAI:
     return _client
 
 
+Usage = dict[str, int]
+
+
+def _empty_usage() -> Usage:
+    return {"prompt_tokens": 0, "completion_tokens": 0}
+
+
+def _extract_usage(resp: Any) -> Usage:
+    """Lift prompt/completion token counts off an OpenAI-shaped response.
+
+    Defaults to zeros when the SDK omits ``usage`` (rare, but possible on some
+    streaming or error paths) so callers can sum unconditionally.
+    """
+    u = getattr(resp, "usage", None)
+    if u is None:
+        return _empty_usage()
+    return {
+        "prompt_tokens": int(getattr(u, "prompt_tokens", 0) or 0),
+        "completion_tokens": int(getattr(u, "completion_tokens", 0) or 0),
+    }
+
+
 async def call_llm(
     *,
     model: str,
@@ -60,8 +82,12 @@ async def call_llm(
     temperature: float = 0.7,
     max_tokens: int = 512,
     response_format: dict[str, Any] | None = None,
-) -> tuple[str, int]:
-    """Rate-limited Groq chat-completion. Returns (content, latency_ms)."""
+) -> tuple[str, int, Usage]:
+    """Rate-limited Groq chat-completion.
+
+    Returns ``(content, latency_ms, usage)`` where ``usage`` is
+    ``{"prompt_tokens": int, "completion_tokens": int}``.
+    """
     await _rate_limiter.acquire()
     client = _get_client()
 
@@ -83,11 +109,13 @@ async def call_llm(
             resp = await client.chat.completions.create(**kwargs)
             latency_ms = int((time.monotonic() - start) * 1000)
             content = resp.choices[0].message.content or ""
+            usage = _extract_usage(resp)
             logger.info(
-                "call_llm ok model=%s attempt=%d latency_ms=%d",
+                "call_llm ok model=%s attempt=%d latency_ms=%d in=%d out=%d",
                 model, attempt, latency_ms,
+                usage["prompt_tokens"], usage["completion_tokens"],
             )
-            return content, latency_ms
+            return content, latency_ms, usage
         except RateLimitError as e:
             last_err = e
             backoff = 2 ** attempt  # 1, 2, 4, 8
@@ -109,12 +137,15 @@ async def call_llm_json(
     user: str,
     temperature: float = 0.0,
     max_tokens: int = 800,
-) -> tuple[dict[str, Any], int]:
+) -> tuple[dict[str, Any], int, Usage]:
     """Call Groq with response_format=json_object, parse-retry once on bad JSON.
 
-    Returns (parsed_dict, latency_ms_of_successful_call). Raises RuntimeError after
-    both attempts fail.
+    Returns ``(parsed_dict, latency_ms_of_successful_call, total_usage)``. Token
+    counts are summed across BOTH attempts because both attempts hit the wire
+    even when the first one returned bad JSON. Raises RuntimeError after both
+    attempts fail.
     """
+    cumulative: Usage = _empty_usage()
     last_error: str | None = None
     for attempt in range(2):
         sys_prompt = (
@@ -122,7 +153,7 @@ async def call_llm_json(
             if attempt == 0
             else system + "\n\nREMINDER: Return ONLY valid JSON, no markdown fences, no preamble."
         )
-        content, latency_ms = await call_llm(
+        content, latency_ms, usage = await call_llm(
             model=model,
             system=sys_prompt,
             user=user,
@@ -130,11 +161,13 @@ async def call_llm_json(
             max_tokens=max_tokens,
             response_format={"type": "json_object"},
         )
+        cumulative["prompt_tokens"] += usage["prompt_tokens"]
+        cumulative["completion_tokens"] += usage["completion_tokens"]
         try:
             data = json.loads(content)
             if not isinstance(data, dict):
                 raise ValueError(f"expected JSON object, got {type(data).__name__}")
-            return data, latency_ms
+            return data, latency_ms, cumulative
         except (json.JSONDecodeError, ValueError) as e:
             last_error = f"json parse failed: {e}; content was: {content[:200]}"
             continue

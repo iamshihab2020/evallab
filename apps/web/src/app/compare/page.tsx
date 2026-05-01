@@ -257,6 +257,8 @@ function CompareView({ data }: { data: RunCompare }) {
 
       <DiffExplainer aId={data.run_a.id} bId={data.run_b.id} />
 
+      <DimensionDelta runA={data.run_a} runB={data.run_b} />
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <RunStatsCard label="Run A" run={data.run_a} />
         <RunStatsCard label="Run B" run={data.run_b} />
@@ -427,6 +429,12 @@ function RunStatsCard({
           <div className="text-sm text-muted-foreground">
             avg {s.avg_score.toFixed(2)} · {s.successful_cases}/{s.total_cases} scored
           </div>
+          {s.tokens_total > 0 && (
+            <div className="text-xs text-muted-foreground font-mono tabular-nums">
+              {compactTokens(s.tokens_total)} tok
+              {s.estimated_cost_usd > 0 ? ` · ~$${s.estimated_cost_usd.toFixed(4)}` : ""}
+            </div>
+          )}
           <div className="space-y-1 pt-2">
             {[1, 2, 3, 4, 5].map((i) => {
               const n = s.score_distribution[String(i)] ?? 0;
@@ -444,6 +452,84 @@ function RunStatsCard({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function compactTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}k`;
+  return n.toString();
+}
+
+const COMPARE_DIMENSIONS: Array<{ key: string; label: string }> = [
+  { key: "accuracy", label: "Accuracy" },
+  { key: "completeness", label: "Completeness" },
+  { key: "tone", label: "Tone" },
+  { key: "safety", label: "Safety" },
+];
+
+function DimensionDelta({
+  runA,
+  runB,
+}: {
+  runA: RunCompare["run_a"];
+  runB: RunCompare["run_b"];
+}) {
+  const da = runA.stats?.per_dimension;
+  const db = runB.stats?.per_dimension;
+  if (!da || !db) return null;
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-6 fade-up">
+      <p className="eyebrow mb-4">Dimension deltas</p>
+      <div className="space-y-2.5">
+        {COMPARE_DIMENSIONS.map(({ key, label }) => {
+          const a = da[key] ?? 0;
+          const b = db[key] ?? 0;
+          const d = b - a;
+          const tone =
+            d > 0
+              ? "text-foreground"
+              : d < 0
+                ? "text-destructive"
+                : "text-muted-foreground";
+          return (
+            <div
+              key={key}
+              className="grid grid-cols-[8rem_1fr_1fr_4rem] items-center gap-3 text-sm"
+            >
+              <span className="text-muted-foreground">{label}</span>
+              <div className="flex items-center gap-2">
+                <span className="font-mono tabular-nums w-10 text-right">
+                  {a.toFixed(2)}
+                </span>
+                <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-foreground/40"
+                    style={{ width: `${(a / 5) * 100}%` }}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono tabular-nums w-10 text-right">
+                  {b.toFixed(2)}
+                </span>
+                <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-foreground/80"
+                    style={{ width: `${(b / 5) * 100}%` }}
+                  />
+                </div>
+              </div>
+              <span className={`text-right font-mono tabular-nums ${tone}`}>
+                Δ {d > 0 ? "+" : ""}
+                {d.toFixed(2)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

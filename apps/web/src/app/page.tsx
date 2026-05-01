@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 
+import { FeaturedComparison, useFeaturedPair } from "@/components/featured-comparison";
 import { StepRail } from "@/components/step-rail";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
@@ -16,6 +17,7 @@ export default function Home() {
   });
 
   const recent = (runs.data ?? []).slice(0, 5);
+  const featuredPair = useFeaturedPair();
 
   return (
     <div className="space-y-12 max-w-5xl mx-auto">
@@ -29,10 +31,16 @@ export default function Home() {
         </p>
       </section>
 
-      <section className="space-y-4">
-        <p className="eyebrow">Get started</p>
-        <StepRail />
-      </section>
+      {featuredPair ? (
+        <section>
+          <FeaturedComparison />
+        </section>
+      ) : (
+        <section className="space-y-4">
+          <p className="eyebrow">Get started</p>
+          <StepRail />
+        </section>
+      )}
 
       <section className="space-y-4 fade-up" style={{ animationDelay: "120ms" }}>
         <div className="flex items-baseline justify-between">

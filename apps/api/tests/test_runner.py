@@ -52,6 +52,7 @@ class _FakeCase:
 class _FakeTestSet:
     def __init__(self, n: int) -> None:
         self.cases = [_FakeCase(i) for i in range(n)]
+        self.domain_context: str | None = None
 
 
 class _FakeSession:
@@ -64,7 +65,7 @@ class _FakeSession:
         self._version = _FakeVersion()
         self.added_case_results: list[dict[str, Any]] = []
 
-    async def __aenter__(self) -> "_FakeSession":
+    async def __aenter__(self) -> _FakeSession:
         return self
 
     async def __aexit__(self, *_: Any) -> None:
@@ -118,11 +119,18 @@ async def test_runner_happy_path_marks_completed() -> None:
     ts = _FakeTestSet(n=3)
     sess = _FakeSession(run, ts)
 
-    async def fake_call_llm(**_: Any) -> tuple[str, int]:
-        return "ok-output", 50
+    async def fake_call_llm(**_: Any) -> tuple[str, int, dict[str, int]]:
+        return "ok-output", 50, {"prompt_tokens": 10, "completion_tokens": 5}
 
-    async def fake_judge(**_: Any) -> tuple[int, str, str, int]:
-        return 4, "good", "PROMPT", 60
+    async def fake_judge(**_: Any) -> tuple[int, dict[str, int], str, str, int, dict[str, int]]:
+        return (
+            4,
+            {"accuracy": 4, "completeness": 4, "tone": 4, "safety": 4},
+            "good",
+            "PROMPT",
+            60,
+            {"prompt_tokens": 30, "completion_tokens": 8},
+        )
 
     # Override the runner's update path: Session.execute is too opaque for the
     # default fake to know whether the case errored. Patch the increment by
@@ -163,15 +171,22 @@ async def test_runner_per_case_errors_dont_fail_the_run() -> None:
 
     call_count = {"i": 0}
 
-    async def fake_call_llm(**_: Any) -> tuple[str, int]:
+    async def fake_call_llm(**_: Any) -> tuple[str, int, dict[str, int]]:
         i = call_count["i"]
         call_count["i"] += 1
         if i == 1:  # second case (index 1) blows up in agent call
             raise RuntimeError("network fart")
-        return "ok-output", 50
+        return "ok-output", 50, {"prompt_tokens": 10, "completion_tokens": 5}
 
-    async def fake_judge(**_: Any) -> tuple[int, str, str, int]:
-        return 5, "great", "PROMPT", 60
+    async def fake_judge(**_: Any) -> tuple[int, dict[str, int], str, str, int, dict[str, int]]:
+        return (
+            5,
+            {"accuracy": 5, "completeness": 5, "tone": 5, "safety": 5},
+            "great",
+            "PROMPT",
+            60,
+            {"prompt_tokens": 30, "completion_tokens": 8},
+        )
 
     with (
         patch("src.services.runner.call_llm", fake_call_llm),
@@ -200,20 +215,27 @@ async def test_runner_caps_concurrency_at_max_concurrent_cases() -> None:
     peak = 0
     lock = asyncio.Lock()
 
-    async def fake_call_llm(**_: Any) -> tuple[str, int]:
+    async def fake_call_llm(**_: Any) -> tuple[str, int, dict[str, int]]:
         nonlocal in_flight, peak
         async with lock:
             in_flight += 1
             peak = max(peak, in_flight)
         try:
             await asyncio.sleep(0.02)
-            return "ok", 10
+            return "ok", 10, {"prompt_tokens": 10, "completion_tokens": 5}
         finally:
             async with lock:
                 in_flight -= 1
 
-    async def fake_judge(**_: Any) -> tuple[int, str, str, int]:
-        return 5, "ok", "P", 5
+    async def fake_judge(**_: Any) -> tuple[int, dict[str, int], str, str, int, dict[str, int]]:
+        return (
+            5,
+            {"accuracy": 5, "completeness": 5, "tone": 5, "safety": 5},
+            "ok",
+            "P",
+            5,
+            {"prompt_tokens": 30, "completion_tokens": 8},
+        )
 
     with (
         patch("src.services.runner.call_llm", fake_call_llm),

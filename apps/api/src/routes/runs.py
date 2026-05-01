@@ -172,7 +172,15 @@ async def _build_run_detail(run_id: UUID, db: AsyncSession) -> RunDetail:
         .order_by(CaseResult.created_at.asc())
     )
     case_results = (await db.execute(cr_stmt)).scalars().all()
-    stats = compute_stats(case_results) if run.status == "completed" else None
+    # Resolve the actual model strings used at run-time so cost estimation pulls
+    # the right rate. The agent model lives on the pinned version (immutable);
+    # the judge model lives on the run.
+    agent_model = version.model if version else None
+    stats = (
+        compute_stats(case_results, agent_model=agent_model, judge_model=run.judge_model)
+        if run.status == "completed"
+        else None
+    )
 
     clusters: list[FailureCluster] | None = None
     if run.failure_clusters is not None:

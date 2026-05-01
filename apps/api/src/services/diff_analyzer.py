@@ -82,7 +82,7 @@ async def explain_diff(
         f"{_format_cases('REGRESSED CASES (B < A)', regressed_pairs)}"
     )
 
-    data, _latency = await call_llm_json(
+    data, _latency, _usage = await call_llm_json(
         model=model,
         system=build_diff_system(domain_context),
         user=user,

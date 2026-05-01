@@ -192,10 +192,18 @@ class CaseResultRead(BaseModel):
     agent_prompt_sent: str | None
     agent_output: str | None
     agent_latency_ms: int | None
+    agent_input_tokens: int | None = None
+    agent_output_tokens: int | None = None
     judge_prompt_sent: str | None
     judge_score: int | None
     judge_reasoning: str | None
     judge_latency_ms: int | None
+    judge_input_tokens: int | None = None
+    judge_output_tokens: int | None = None
+    dim_accuracy: int | None = None
+    dim_completeness: int | None = None
+    dim_tone: int | None = None
+    dim_safety: int | None = None
     error: str | None
     created_at: datetime
     human_score: HumanScoreRead | None = None
@@ -224,6 +232,27 @@ class RunStats(BaseModel):
     score_distribution: dict[int, int]
     per_category: dict[str, CategoryStat]
     worst_cases: list[WorstCase]
+    # Per-dimension averages over successful cases that have all 4 dim columns
+    # populated. None for older runs that pre-date dimensional scoring.
+    per_dimension: dict[str, float] | None = None
+    # Token + cost rollups. Sum across all case_results (including errored ones
+    # that already spent agent tokens before the judge failed) so the dollar
+    # figure reflects what the run actually cost.
+    tokens_in: int = 0
+    tokens_out: int = 0
+    tokens_total: int = 0
+    estimated_cost_usd: float = 0.0
+
+
+class RunUsage(BaseModel):
+    """Daily quota meter aggregating token spend across today's runs."""
+
+    tokens_in_today: int
+    tokens_out_today: int
+    tokens_total_today: int
+    runs_today: int
+    daily_quota_tokens: int = 100_000
+    percent_used: float
 
 
 class RunRead(BaseModel):

@@ -75,35 +75,61 @@ async def execute_run(run_id: UUID, db_factory: async_sessionmaker) -> None:  # 
                     "run_id": run_id,
                     "test_case_id": case_id,
                 }
+                # Two nested try blocks so we can capture the agent's token
+                # spend even when the judge call later errors. Costs reflect what
+                # the run actually spent, not what it usefully measured.
                 try:
-                    agent_output, agent_latency = await call_llm(
+                    agent_output, agent_latency, agent_usage = await call_llm(
                         model=agent_model,
                         system=agent_system,
                         user=case_input,
                         temperature=agent_temp,
                         max_tokens=agent_max_tokens,
                     )
-                    score, reasoning, judge_full_prompt, judge_latency = await judge_response(
-                        model=judge_model,
-                        input=case_input,
-                        agent_output=agent_output,
-                        expected_behavior=expected,
-                        domain_context=domain_context,
-                    )
                     result_kwargs.update(
                         agent_prompt_sent=agent_full_prompt,
                         agent_output=agent_output,
                         agent_latency_ms=agent_latency,
-                        judge_prompt_sent=judge_full_prompt,
-                        judge_score=score,
-                        judge_reasoning=reasoning,
-                        judge_latency_ms=judge_latency,
+                        agent_input_tokens=agent_usage["prompt_tokens"],
+                        agent_output_tokens=agent_usage["completion_tokens"],
                     )
-                except Exception as e:
+                    try:
+                        (
+                            score,
+                            dim_scores,
+                            reasoning,
+                            judge_full_prompt,
+                            judge_latency,
+                            judge_usage,
+                        ) = await judge_response(
+                            model=judge_model,
+                            input=case_input,
+                            agent_output=agent_output,
+                            expected_behavior=expected,
+                            domain_context=domain_context,
+                        )
+                        result_kwargs.update(
+                            judge_prompt_sent=judge_full_prompt,
+                            judge_score=score,
+                            judge_reasoning=reasoning,
+                            judge_latency_ms=judge_latency,
+                            judge_input_tokens=judge_usage["prompt_tokens"],
+                            judge_output_tokens=judge_usage["completion_tokens"],
+                            dim_accuracy=dim_scores["accuracy"],
+                            dim_completeness=dim_scores["completeness"],
+                            dim_tone=dim_scores["tone"],
+                            dim_safety=dim_scores["safety"],
+                        )
+                    except Exception as je:
+                        errored = True
+                        err_str = f"{type(je).__name__}: {str(je)[:500]}"
+                        result_kwargs["error"] = err_str
+                        logger.warning("case %s judge errored: %s", case_id, err_str)
+                except Exception as ae:
                     errored = True
-                    err_str = f"{type(e).__name__}: {str(e)[:500]}"
+                    err_str = f"{type(ae).__name__}: {str(ae)[:500]}"
                     result_kwargs["error"] = err_str
-                    logger.warning("case %s errored: %s", case_id, err_str)
+                    logger.warning("case %s agent errored: %s", case_id, err_str)
 
                 async with db_factory() as db:
                     db.add(CaseResult(**result_kwargs))

@@ -78,7 +78,7 @@ async def cluster_failures(
     valid_ids = {cr.id for cr in failures}
     user_prompt = _build_user_prompt(failures)
 
-    data, _latency = await call_llm_json(
+    data, _latency, _usage = await call_llm_json(
         model=model,
         system=build_cluster_system(domain_context),
         user=user_prompt,

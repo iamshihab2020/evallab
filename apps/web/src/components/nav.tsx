@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { QuotaMeter } from "@/components/quota-meter";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
@@ -66,6 +67,7 @@ export function Nav() {
 
         {/* Right side */}
         <div className="flex items-center gap-2">
+          <QuotaMeter />
           <button
             type="button"
             onClick={() => window.dispatchEvent(new CustomEvent("evallab:tour-open"))}

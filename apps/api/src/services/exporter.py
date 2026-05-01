@@ -123,22 +123,30 @@ def export_run_md(run: RunDetail) -> str:
     ]
 
     # === Configuration =====================================================
+    config_rows = [
+        ("Run ID", f"`{run.id}`"),
+        ("Test set", run.test_set_name),
+        ("Agent", run.agent_name),
+        ("Judge model", f"`{run.judge_model}`"),
+        ("Started", _human_dt(run.started_at)),
+        ("Completed", _human_dt(run.completed_at)),
+        ("Duration", duration),
+        ("Avg agent latency", f"{avg_agent:,.0f} ms"),
+        ("Avg judge latency", f"{avg_judge:,.0f} ms"),
+    ]
+    if s.tokens_total > 0:
+        config_rows.append(
+            ("Tokens", f"{s.tokens_total:,} ({s.tokens_in:,} in · {s.tokens_out:,} out)"),
+        )
+        config_rows.append(("Estimated cost", f"~${s.estimated_cost_usd:.4f}"))
     lines += [
         "## Configuration",
         "",
         "| Field | Value |",
         "|-------|-------|",
-        f"| Run ID | `{run.id}` |",
-        f"| Test set | {run.test_set_name} |",
-        f"| Agent | {run.agent_name} |",
-        f"| Judge model | `{run.judge_model}` |",
-        f"| Started | {_human_dt(run.started_at)} |",
-        f"| Completed | {_human_dt(run.completed_at)} |",
-        f"| Duration | {duration} |",
-        f"| Avg agent latency | {avg_agent:,.0f} ms |",
-        f"| Avg judge latency | {avg_judge:,.0f} ms |",
-        "",
     ]
+    lines += [f"| {k} | {v} |" for k, v in config_rows]
+    lines.append("")
 
     # === Score distribution (visual) =======================================
     lines += [
@@ -151,6 +159,24 @@ def export_run_md(run: RunDetail) -> str:
         bar = _bar(count, s.successful_cases)
         lines.append(f"  {score}  {bar}  {count}")
     lines += ["```", ""]
+
+    # === Per-dimension averages ============================================
+    if s.per_dimension:
+        lines += [
+            "## Per-dimension averages",
+            "",
+            "_Each case is independently scored 1-5 on accuracy, completeness, tone, and safety._",
+            "",
+            "```",
+        ]
+        for dim in ("accuracy", "completeness", "tone", "safety"):
+            avg = s.per_dimension.get(dim, 0.0)
+            # bar over 5.0 max
+            filled = round((avg / 5.0) * _BAR_WIDTH)
+            filled = max(0, min(_BAR_WIDTH, filled))
+            bar = _BAR_FULL * filled + _BAR_EMPTY * (_BAR_WIDTH - filled)
+            lines.append(f"  {dim:<13} {bar}  {avg:.2f}")
+        lines += ["```", ""]
 
     # === Per-category breakdown ============================================
     if s.per_category:
