@@ -2,8 +2,6 @@
 
 A small web app for evaluating LLM outputs systematically. Define test sets, define agents, run them against an LLM-as-judge, compare the diff. Ship prompts with numbers, not vibes.
 
-> **Heads up:** the backend runs on Render's free tier and spins down after ~15 min idle. Your first request after a quiet period will take 30–60 s while it wakes. The frontend shows a banner during the wait. Subsequent requests are fast.
-
 ---
 
 ## Why this exists
