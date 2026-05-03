@@ -119,40 +119,6 @@ Go back to Render and update `CORS_ORIGINS` to include your Vercel URL:
 CORS_ORIGINS=http://localhost:3000,https://your-app.vercel.app
 ```
 
-Render redeploys automatically. The wake-up banner handles the first cold start gracefully.
-
-## Design decisions worth calling out
-
-- **No auth.** EvalLab is a single-user tool. The deployed instance has a simple `X-API-Key` header to prevent randos burning my Groq quota — that's it.
-- **Llama 3.3 70B as both agent and judge.** I tried GPT-4 and Claude as judges — they're better — but Groq's free tier and speed (200+ TPS) made Llama 3.3 the right tradeoff. The judge prompt matters more than the model choice in most cases.
-- **Token-bucket rate limiter at 28 RPM.** Groq's free tier ceiling for Llama 3.3 70B is 30 RPM. The runner caps itself at 28 to leave margin, with 429 retries (1 → 8 s exponential backoff, max 4 attempts) as a safety net.
-- **Per-case errors don't fail the run.** If one case throws (network blip, malformed judge response after retries), it's marked errored and the run continues. Stats compute over successful cases only. Token spend on partially-failed cases is still captured so cost reflects reality.
-- **Polling instead of SSE.** A run takes 2–3 minutes. Polling every 2 s is simple and works.
-- **Pass-rate threshold = score ≥ 4.** In practice, scores of 3 still represent "the agent missed something important."
-- **Dimensional rubric.** The judge scores accuracy, completeness, tone, and safety independently and derives the overall from those. The breakdown surfaces in the run-detail page and the compare deltas, so you can see _which_ dimension a prompt change moved.
-- **Prompt versioning.** Editing an agent creates a new immutable `AgentVersion` row. Runs pin to a version, so a year-old run still references the prompt that produced it even if the agent has been edited 50 times since.
-- **Auto-seed on cold start.** Every Render boot calls `auto_seed_on_startup`, which is idempotent (checks each test set by name). New deploys come up with demo data without anyone touching the dashboard.
-
-## Limitations and what's next
-
-- **Judge model bias.** LLM-as-judge has known biases — verbosity bias, position bias, self-preference. The dimensional rubric mitigates some of this; ensemble judges would mitigate more. Not addressed.
-- **Judge calibration is a tool, not a guarantee.** The calibration page measures κ but I don't currently use it to gate which judges/models you trust. A real eval system would.
-- **No "rerun this case" affordance.** If one case errors, you re-run the whole test set.
-- **Single LLM provider.** Adding OpenRouter would let users compare models across providers in the same run.
-- **No async job queue.** Runs use FastAPI `BackgroundTasks`. If Render restarts the worker mid-run, the run is marked failed by `heal_orphaned_runs` on the next cold start — no resume.
-- **No public sharing.** Runs are private to whoever holds `EVALLAB_API_KEY`. Signed read-only URLs would be a small addition.
-
-## How I'd evolve this for production
-
-If this were a real product team's tool:
-
-- **Async job queue** (Arq or Celery + Redis) instead of FastAPI BackgroundTasks, so runs survive restarts and can be cancelled.
-- **Webhook-based eval triggers** so prompt PRs in a real product repo can fire an eval run and post results back before merge. The whole point of eval-driven development.
-- **Multi-judge ensembles** for important rubrics, with disagreement surfacing.
-- **Cost tracking by team / project / run** with budget alerts. The per-run rollup is in place; aggregating up is the rest.
-- **Public sharing** of runs via signed URLs (read-only), so a "look at this regression" link can land in Slack without exposing the API key.
-- **Per-test-set rubrics** so technical test sets can use a different rubric than emotional-support test sets, instead of one global four-dimension grid.
-
 ## License
 
 All rights reserved. The source is published here for portfolio review;
